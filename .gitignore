@@ -205,3 +205,12 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+token.json
+token_calendar.json
+credentials.json
+voice.wav
+*.wav
+*.json
+google_agenda_structured.json
+extracted_items.json

@@ -1,0 +1,12 @@
+Analyse le texte suivant et extrait des éléments actionnables selon les catégories définies.
+
+Règles :
+1) Les rendez-vous, meetings, appels planifiés → catégorie "agenda".
+2) Les tâches à faire, actions concrètes → catégorie "to_do".
+3) Les informations générales, idées, notes → catégorie "note".
+4) Si une date/heure est présente, garde-la dans datetime_raw et essaie de la convertir au format ISO.
+5) N’invente rien : n’extrait que ce qui est réellement présent dans le texte.
+6) Produit un tableau JSON d’objets, un par élément détecté.
+
+Texte à analyser :
+'''{text}'''
