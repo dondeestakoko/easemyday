@@ -1,9 +1,11 @@
 Analyse le texte suivant et extrait les éléments actionnables selon les règles ci-dessous.
 
 Règles d’extraction :
-1) Les rendez-vous, réunions, appels planifiés → catégorie "agenda".
-2) Les tâches à faire ou actions concrètes → catégorie "to_do".
-3) Les informations générales, idées ou notes → catégorie "note".
+Règles pour l'extraction :
+
+1) "agenda" : tous les rendez-vous, réunions, appels, événements planifiés.
+2) "to_do" : toutes les tâches ou actions concrètes à réaliser.
+3) "note" : toutes les informations générales, idées, observations ou remarques qui ne sont ni un rendez-vous ni une tâche.
 4) Si une date ou heure est présente, place-la dans "datetime_raw" et essaie de la convertir au format ISO.
 5) N’invente rien : n’extrais que ce qui existe réellement dans le texte.
 6) Retourne un tableau JSON contenant les objets extraits.

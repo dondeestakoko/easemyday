@@ -19,7 +19,7 @@ from agent_extract import (
 load_dotenv()
 
 # -------------------------------------------------------
-# TRANSCRIPTION AUDIO EN MÉMOIRE
+# TRANSCRIPTION AUDIO
 # -------------------------------------------------------
 def transcribe_audio_memory(audio_bytes):
     api_key = os.getenv("GROQ_API_KEY")
@@ -41,7 +41,6 @@ def transcribe_audio_memory(audio_bytes):
         }
 
         response = requests.post(url, headers=headers, files=files)
-
         if response.status_code == 200:
             return response.json().get("text", "")
         else:
@@ -52,8 +51,9 @@ def transcribe_audio_memory(audio_bytes):
         st.error(f"Erreur de transcription : {e}")
         return None
 
+
 # -------------------------------------------------------
-# CONFIG UI
+# UI
 # -------------------------------------------------------
 st.set_page_config(page_title="EaseMyDay", layout="wide", page_icon="🧠")
 st.title("EaseMyDay — Assistant Intelligent 🧠")
@@ -61,29 +61,34 @@ st.title("EaseMyDay — Assistant Intelligent 🧠")
 col_chat, col_calendar = st.columns([2, 1], gap="large")
 
 # -------------------------------------------------------
-# COLONNE DROITE : GOOGLE CALENDAR
+# GOOGLE CALENDAR
 # -------------------------------------------------------
 with col_calendar:
     st.subheader(" Mon Google Agenda")
     calendar_url = "https://calendar.google.com/calendar/embed?src=ticketsdata5%40gmail.com&ctz=Europe%2FParis"
     components.iframe(src=calendar_url, height=600, scrolling=True)
 
+
 # -------------------------------------------------------
-# COLONNE GAUCHE : CHAT & AUDIO
+# CHAT
 # -------------------------------------------------------
 with col_chat:
     st.subheader("Discussion")
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
     if "last_extracted" not in st.session_state:
         st.session_state.last_extracted = None
 
-    # Historique du chat
+    if "pending_save" not in st.session_state:
+        st.session_state.pending_save = False
+
+    # Display all messages
     for msg in st.session_state.messages:
         st.chat_message(msg["role"]).write(msg["content"])
 
-    # AUDIO RECORDER
+    # AUDIO
     audio_bytes = audio_recorder(
         text="",
         recording_color="#e8b62c",
@@ -96,48 +101,48 @@ with col_chat:
 
     if audio_bytes:
         with st.spinner("Transcription en cours..."):
-            transcribed_text = transcribe_audio_memory(audio_bytes)
-            if transcribed_text:
-                final_input = transcribed_text
+            final_input = transcribe_audio_memory(audio_bytes)
 
-    # INPUT TEXTE
     text_prompt = st.chat_input("Pose ta question ou donne une instruction...")
     if text_prompt:
         final_input = text_prompt
 
-    # TRAITEMENT DU MESSAGE
+    # -------------------------------------------------------
+    # TRAITEMENT MESSAGE
+    # -------------------------------------------------------
     if final_input:
 
-        # Empêcher duplication dans l’historique
-        if not st.session_state.messages or st.session_state.messages[-1]["content"] != final_input:
-            st.session_state.messages.append({"role": "user", "content": final_input})
-            st.chat_message("user").write(final_input)
+        st.session_state.messages.append({"role": "user", "content": final_input})
 
-            with st.spinner("Analyse en cours..."):
-                raw = appeler_groq(final_input)
-                message_user, json_data = extraire_message_et_items(raw)
-                json_data = normaliser_dates(json_data)
+        with st.spinner("Analyse en cours..."):
+            raw = appeler_groq(final_input)
+            message_user, json_data = extraire_message_et_items(raw)
+            json_data = normaliser_dates(json_data)
 
-            # Stocker les items pour validation
-            st.session_state.last_extracted = json_data
+        st.session_state.last_extracted = json_data
+        
+        # Vérifier la présence de vrais éléments à enregistrer
+        has_extractable_items = (
+            isinstance(json_data, list)
+            and any(item.get("category") is not None and item.get("text") is not None for item in json_data)
+        )
+        
+        response_text = message_user
 
-            # ---------------------------
-            # MESSAGE ASSISTANT (pas de résumé)
-            # ---------------------------
-            response_text = message_user
+        if has_extractable_items:
+            response_text += "\n\nSouhaites-tu que je les ajoute ?"
+            st.session_state.pending_save = True
+        else:
+            st.session_state.pending_save = False
+            response_text += "\n\nAucun élément à enregistrer."
 
-            if len(json_data) == 0:
-                response_text += "\n\nAucun élément à enregistrer."
-            else:
-                response_text += "\n\nSouhaites-tu que je les ajoute ?"
-
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
-            st.chat_message("assistant").write(response_text)
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
+        st.rerun()
 
     # -------------------------------------------------------
-    # ACTION : AJOUT DES ITEMS DANS LE FICHIER JSON
+    # OPTIONS DE SAUVEGARDE
     # -------------------------------------------------------
-    if st.session_state.last_extracted and len(st.session_state.last_extracted) > 0:
+    if st.session_state.pending_save and st.session_state.last_extracted:
         st.write("---")
         st.write("Souhaites-tu enregistrer ces informations ?")
 
@@ -146,9 +151,13 @@ with col_chat:
             if st.button("✅ Oui, ajouter"):
                 ajouter_items_si_user_accepte(st.session_state.last_extracted, True)
                 st.success("Les éléments ont été ajoutés.")
+                st.session_state.pending_save = False
                 st.session_state.last_extracted = None
+                st.rerun()
 
         with col2:
             if st.button("❌ Non, annuler"):
+                st.info("Aucun élément n'a été ajouté.")
+                st.session_state.pending_save = False
                 st.session_state.last_extracted = None
-                st.info("Aucun élément n’a été ajouté.")
+                st.rerun()
