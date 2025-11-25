@@ -41,7 +41,7 @@ def appeler_groq(text_brut: str):
             {"role": "user", "content": USER_PROMPT_TEMPLATE.format(text=text_brut)},
         ],
         "temperature": 0.0,
-        "max_tokens": 800,
+        "max_tokens": 1000,
     }
 
     r = requests.post(GROQ_CHAT_URL, headers=headers, json=payload)
@@ -52,27 +52,35 @@ def appeler_groq(text_brut: str):
     return r.json()["choices"][0]["message"]["content"]
 
 # -------------------------------------------------
-# Parse JSON
+# EXTRACTION RÉSUMÉ + JSON
 # -------------------------------------------------
-def extraire_json(s: str):
-    s = s.strip()
+def extraire_json(texte_modele: str):
+    """
+    Le modèle renvoie maintenant :
+    1) Un texte naturel (résumé)
+    2) Puis un JSON strict (tableau)
 
-    # Tentative direct
+    On sépare les deux.
+    """
+    texte = texte_modele.strip()
+
+    # Trouver la première occurrence d'un JSON valide
+    start = texte.find("[")
+    end = texte.rfind("]")
+
+    if start == -1 or end == -1:
+        raise ValueError("Aucun JSON trouvé dans la réponse :\n" + texte_modele)
+
+    resume = texte[:start].strip()
+    json_part = texte[start:end+1].strip()
+
+    # Charger le JSON
     try:
-        return json.loads(s)
-    except:
-        pass
+        data = json.loads(json_part)
+    except Exception as e:
+        raise ValueError("Erreur de parsing JSON :\n" + json_part) from e
 
-    # Sinon tenter entre crochets
-    start = s.find("[")
-    end = s.rfind("]")
-    if start != -1 and end != -1:
-        try:
-            return json.loads(s[start:end+1])
-        except:
-            pass
-
-    raise ValueError("Impossible de parser la réponse JSON :\n" + s)
+    return resume, data
 
 # -------------------------------------------------
 # Normalisation des dates
@@ -106,8 +114,12 @@ def extraire_et_sauver(text_brut: str, output=OUTPUT_JSON_FILE):
     print("[INFO] Envoi du texte à Groq...")
     contenu = appeler_groq(text_brut)
 
-    print("[INFO] Parsing JSON...")
-    items = extraire_json(contenu)
+    print("[INFO] Extraction résumé + JSON...")
+    resume, items = extraire_json(contenu)
+
+    print("\n--- RÉSUMÉ FOURNI PAR LE MODÈLE ---")
+    print(resume)
+    print("----------------------------------\n")
 
     print("[INFO] Normalisation des dates...")
     items = normaliser_dates(items)
@@ -117,7 +129,7 @@ def extraire_et_sauver(text_brut: str, output=OUTPUT_JSON_FILE):
         json.dump(items, f, indent=2, ensure_ascii=False)
 
     print(f"[OK] {len(items)} éléments enregistrés → {output}")
-    return items
+    return resume, items
 
 # -------------------------------------------------
 # Exemple d'utilisation
@@ -130,5 +142,5 @@ if __name__ == "__main__":
     Réunion d'équipe mardi prochain à 10h.
     """
 
-    resultat = extraire_et_sauver(texte)
+    resume, resultat = extraire_et_sauver(texte)
     print(json.dumps(resultat, indent=2, ensure_ascii=False))
