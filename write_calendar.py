@@ -55,7 +55,7 @@ class GoogleCalendarClient:
         description: str = "",
         timezone: str = "Europe/Paris",
         calendar_id: str = "primary",
-    ) -> dict:
+    ) -> dict:                         
 
         event_body = {
             "summary": summary,
