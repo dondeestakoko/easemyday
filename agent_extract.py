@@ -55,16 +55,8 @@ def appeler_groq(text_brut: str):
 # EXTRACTION RÉSUMÉ + JSON
 # -------------------------------------------------
 def extraire_json(texte_modele: str):
-    """
-    Le modèle renvoie maintenant :
-    1) Un texte naturel (résumé)
-    2) Puis un JSON strict (tableau)
-
-    On sépare les deux.
-    """
     texte = texte_modele.strip()
 
-    # Trouver la première occurrence d'un JSON valide
     start = texte.find("[")
     end = texte.rfind("]")
 
@@ -74,13 +66,12 @@ def extraire_json(texte_modele: str):
     resume = texte[:start].strip()
     json_part = texte[start:end+1].strip()
 
-    # Charger le JSON
     try:
-        data = json.loads(json_part)
+        items = json.loads(json_part)
     except Exception as e:
-        raise ValueError("Erreur de parsing JSON :\n" + json_part) from e
+        raise ValueError("Erreur parsing JSON :\n" + json_part) from e
 
-    return resume, data
+    return resume, items
 
 # -------------------------------------------------
 # Normalisation des dates
@@ -91,12 +82,9 @@ def normaliser_dates(items):
         iso = it.get("datetime_iso")
 
         if iso:
-            try:
-                parsed = dateparser.parse(iso)
-                if parsed:
-                    it["datetime_iso"] = parsed.isoformat()
-            except:
-                pass
+            parsed = dateparser.parse(iso)
+            if parsed:
+                it["datetime_iso"] = parsed.isoformat()
 
         elif raw:
             parsed = dateparser.parse(raw)
@@ -108,27 +96,42 @@ def normaliser_dates(items):
     return items
 
 # -------------------------------------------------
-# Pipeline principal
+# Sauvegarde conditionnelle
 # -------------------------------------------------
-def extraire_et_sauver(text_brut: str, output=OUTPUT_JSON_FILE):
-    print("[INFO] Envoi du texte à Groq...")
+def ajouter_items_si_user_accepte(items, accept: bool, output=OUTPUT_JSON_FILE):
+    """
+    Ajoute les items SI ET SEULEMENT SI l'utilisateur approuve.
+    """
+    if not accept:
+        print("[INFO] L'utilisateur n'a pas validé. Aucun élément ajouté.")
+        return False
+
+    # Charger l'existant
+    if os.path.exists(output):
+        with open(output, "r", encoding="utf-8") as f:
+            existants = json.load(f)
+    else:
+        existants = []
+
+    # Ajouter
+    existants.extend(items)
+
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(existants, f, indent=2, ensure_ascii=False)
+
+    print(f"[OK] {len(items)} élément(s) ajouté(s) → {output}")
+    return True
+
+# -------------------------------------------------
+# Pipeline principal (ne sauvegarde plus)
+# -------------------------------------------------
+def extraire(text_brut: str):
+    print("[INFO] Analyse en cours...")
     contenu = appeler_groq(text_brut)
 
-    print("[INFO] Extraction résumé + JSON...")
     resume, items = extraire_json(contenu)
-
-    print("\n--- RÉSUMÉ FOURNI PAR LE MODÈLE ---")
-    print(resume)
-    print("----------------------------------\n")
-
-    print("[INFO] Normalisation des dates...")
     items = normaliser_dates(items)
 
-    print("[INFO] Sauvegarde...")
-    with open(output, "w", encoding="utf-8") as f:
-        json.dump(items, f, indent=2, ensure_ascii=False)
-
-    print(f"[OK] {len(items)} éléments enregistrés → {output}")
     return resume, items
 
 # -------------------------------------------------
@@ -138,9 +141,18 @@ if __name__ == "__main__":
     texte = """
     Appeler le docteur lundi à 15h.
     Acheter des bouteilles d’eau.
-    Note : penser à vérifier les sauvegardes.
     Réunion d'équipe mardi prochain à 10h.
     """
 
-    resume, resultat = extraire_et_sauver(texte)
+    resume, resultat = extraire(texte)
+
+    print("\n--- RÉSUMÉ ---\n")
+    print(resume)
+
+    print("\n--- EXTRAITS ---\n")
     print(json.dumps(resultat, indent=2, ensure_ascii=False))
+
+    # Simulation : l'utilisateur confirme
+    user_accepts = True
+
+    ajouter_items_si_user_accepte(resultat, user_accepts)
