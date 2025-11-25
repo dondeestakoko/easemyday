@@ -1,0 +1,14 @@
+IMPORTANT : Réponds uniquement en français.
+
+Here is some JSON data that the user wants to organize or improve:
+
+{{JSON_DATA}}
+
+Please:
+1. Analyze the structure, content, and patterns.
+2. Suggest a better organization or improved format.
+3. Identify possible missing information.
+4. Ask the user 2–3 questions to better understand their intent.
+5. Keep the suggestions general (not domain-specific unless the data implies it).
+
+Provide output in a clear and structured format.
