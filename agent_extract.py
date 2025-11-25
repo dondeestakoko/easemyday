@@ -9,7 +9,7 @@ import dateparser
 # -------------------------------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL_NAME = "qwen/qwen3-32b"
+MODEL_NAME = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT_FILE = "system_prompt.txt"
 USER_PROMPT_FILE = "user_prompt.txt"
@@ -129,10 +129,38 @@ def extraire(text_brut: str):
     print("[INFO] Analyse en cours...")
     contenu = appeler_groq(text_brut)
 
-    resume, items = extraire_json(contenu)
+    message, items = extraire_message_et_items(contenu)
     items = normaliser_dates(items)
 
-    return resume, items
+    return message, items
+
+
+def extraire_message_et_items(texte_modele: str):
+    """
+    Le modèle renvoie :
+    1) Un message naturel destiné à l'utilisateur
+    2) Un tableau JSON d'items extraits
+    """
+
+    texte = texte_modele.strip()
+
+    # Localiser le JSON
+    start = texte.find("[")
+    end = texte.rfind("]")
+
+    if start == -1 or end == -1:
+        raise ValueError("Aucun JSON trouvé dans la réponse :\n" + texte_modele)
+
+    message_utilisateur = texte[:start].strip()
+    json_part = texte[start:end+1].strip()
+
+    try:
+        items = json.loads(json_part)
+    except Exception as e:
+        raise ValueError("Erreur parsing JSON :\n" + json_part) from e
+
+    return message_utilisateur, items
+
 
 # -------------------------------------------------
 # Exemple d'utilisation

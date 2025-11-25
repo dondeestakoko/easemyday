@@ -8,7 +8,12 @@ from dotenv import load_dotenv
 from audio_recorder_streamlit import audio_recorder
 
 # Fonctions de ton agent
-from agent_extract import appeler_groq, extraire_json, normaliser_dates, ajouter_items_si_user_accepte
+from agent_extract import (
+    appeler_groq,
+    extraire_message_et_items,
+    normaliser_dates,
+    ajouter_items_si_user_accepte
+)
 
 # Chargement .env
 load_dotenv()
@@ -63,7 +68,6 @@ with col_calendar:
     calendar_url = "https://calendar.google.com/calendar/embed?src=ticketsdata5%40gmail.com&ctz=Europe%2FParis"
     components.iframe(src=calendar_url, height=600, scrolling=True)
 
-
 # -------------------------------------------------------
 # COLONNE GAUCHE : CHAT & AUDIO
 # -------------------------------------------------------
@@ -79,7 +83,7 @@ with col_chat:
     for msg in st.session_state.messages:
         st.chat_message(msg["role"]).write(msg["content"])
 
-    # AUDIO
+    # AUDIO RECORDER
     audio_bytes = audio_recorder(
         text="",
         recording_color="#e8b62c",
@@ -96,41 +100,42 @@ with col_chat:
             if transcribed_text:
                 final_input = transcribed_text
 
+    # INPUT TEXTE
     text_prompt = st.chat_input("Pose ta question ou donne une instruction...")
     if text_prompt:
         final_input = text_prompt
 
-    # TRAITEMENT DU TEXTE OU AUDIO
+    # TRAITEMENT DU MESSAGE
     if final_input:
 
+        # Empêcher duplication dans l’historique
         if not st.session_state.messages or st.session_state.messages[-1]["content"] != final_input:
             st.session_state.messages.append({"role": "user", "content": final_input})
             st.chat_message("user").write(final_input)
 
             with st.spinner("Analyse en cours..."):
                 raw = appeler_groq(final_input)
-                resume, json_data = extraire_json(raw)
+                message_user, json_data = extraire_message_et_items(raw)
                 json_data = normaliser_dates(json_data)
 
-            # Sauvegarde temporaire pour plus tard
+            # Stocker les items pour validation
             st.session_state.last_extracted = json_data
 
-            # --- RÉPONSE ASSISTANT (sans JSON) ---
-            if resume.strip():
-                response_text = f"### Résumé de l’analyse\n{resume}\n\n"
-            else:
-                response_text = "J’ai analysé ton message."
+            # ---------------------------
+            # MESSAGE ASSISTANT (pas de résumé)
+            # ---------------------------
+            response_text = message_user
 
             if len(json_data) == 0:
-                response_text += "Aucune tâche ou rendez-vous détecté."
+                response_text += "\n\nAucun élément à enregistrer."
             else:
-                response_text += "Veux-tu que j’ajoute ces informations ?"
+                response_text += "\n\nSouhaites-tu que je les ajoute ?"
 
             st.session_state.messages.append({"role": "assistant", "content": response_text})
             st.chat_message("assistant").write(response_text)
 
     # -------------------------------------------------------
-    # BOUTON D’AJOUT DES ÉLÉMENTS
+    # ACTION : AJOUT DES ITEMS DANS LE FICHIER JSON
     # -------------------------------------------------------
     if st.session_state.last_extracted and len(st.session_state.last_extracted) > 0:
         st.write("---")
