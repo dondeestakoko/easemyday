@@ -11,8 +11,8 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL_NAME = "llama-3.1-8b-instant"
 
-SYSTEM_PROMPT_FILE = "system_prompt.txt"
-USER_PROMPT_FILE = "user_prompt.txt"
+SYSTEM_PROMPT_FILE = "./prompt/system_prompt.txt"
+USER_PROMPT_FILE = "./prompt/user_prompt.txt"
 OUTPUT_JSON_FILE = "extracted_items.json"
 
 # -------------------------------------------------

@@ -16,8 +16,8 @@ def load_prompt(path):
 
 # NOTE:
 # You will create and edit these files later.
-SYSTEM_PROMPT_FILE = "./prompts/smart_suggest_system.txt"
-USER_PROMPT_FILE = "./prompts/smart_suggest_user.txt"
+SYSTEM_PROMPT_FILE = "./prompt/smart_suggest_system.txt"
+USER_PROMPT_FILE = "./prompt/smart_suggest_user.txt"
 
 SYSTEM_PROMPT = load_prompt(SYSTEM_PROMPT_FILE)
 USER_PROMPT_TEMPLATE = load_prompt(USER_PROMPT_FILE)

@@ -56,7 +56,7 @@ def fetch_google_agenda():
 
     # Utilise token.json s'il existe
     try:
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+        creds = Credentials.from_authorized_user_file("./json_files/token.json", SCOPES)
     except:
         pass
 
@@ -111,7 +111,7 @@ def google_agenda_agent():
         raw_text += f"  Description : {e.get('description', '')}\n\n"
 
     # 3. Appliquer ton prompt spécialisé
-    prompt = load_file("agenda_prompt.txt")
+    prompt = load_file("./prompt/agenda_prompt.txt")
 
     json_struct = groq_format(prompt, raw_text)
 

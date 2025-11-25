@@ -14,7 +14,7 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 # ----------------------------------------
 # Load JSON file
 # ----------------------------------------
-INPUT_FILE = "extracted_items.json"
+INPUT_FILE = "./json_files/extracted_items.json"
 
 with open(INPUT_FILE, "r", encoding="utf-8") as f:
     data = json.load(f)
@@ -29,7 +29,7 @@ print(f" {len(agenda_items)} événements agenda trouvés.")
 # ----------------------------------------
 creds = None
 try:
-    creds = Credentials.from_authorized_user_file("token_calendar.json", SCOPES)
+    creds = Credentials.from_authorized_user_file("./json_files/token_calendar.json", SCOPES)
 except:
     pass
 
@@ -38,12 +38,12 @@ if not creds or not creds.valid:
         creds.refresh(Request())
     else:
         flow = InstalledAppFlow.from_client_secrets_file(
-            "credentials.json", SCOPES
+            "./json_files/credentials.json", SCOPES
         )
         creds = flow.run_local_server(port=0)
 
     # Save token
-    with open("token_calendar.json", "w", encoding="utf-8") as token:
+    with open("./json_files/token_calendar.json", "w", encoding="utf-8") as token:
         token.write(creds.to_json())
 
 service = build("calendar", "v3", credentials=creds)

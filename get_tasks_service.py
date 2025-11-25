@@ -12,19 +12,19 @@ SCOPES = ["https://www.googleapis.com/auth/tasks"]
 def get_tasks_service():
     creds = None
 
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if os.path.exists("./json_files/token.json"):
+        creds = Credentials.from_authorized_user_file("./json_files/token.json", SCOPES)
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json", SCOPES
+                "./json_files/credentials.json", SCOPES
             )
             creds = flow.run_local_server(port=0)
 
-        with open("token.json", "w") as token:
+        with open("./json_files/token.json", "w") as token:
             token.write(creds.to_json())
 
     service = build("tasks", "v1", credentials=creds)
