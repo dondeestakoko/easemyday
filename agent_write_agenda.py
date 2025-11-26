@@ -2,6 +2,7 @@ import json
 import datetime
 import os.path
 import sys
+import re
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -14,7 +15,53 @@ from typing import List, Dict, Any, Optional
 # CONSTANTES DE CONFIGURATION GLOBALES
 # ========================================
 
+# Google Calendar API - OAuth scopes
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
+# Chemins de fichiers
+INPUT_FILE = "./json_files/extracted_items.json"
+TOKEN_PATH = "./json_files/token_calendar.json"
+CREDS_PATH = "./json_files/credentials.json"
+
+# Paramètres du calendrier
+CALENDAR_ID = "primary"
+TIMEZONE = "Europe/Paris"
+
+
+# ========================================
+# FONCTIONS UTILITAIRES
+# ========================================
+
+def extract_end_time_from_text(text: str, start_time: datetime.datetime) -> datetime.datetime:
+    """
+    Extrait l'heure de fin depuis le texte (ex: "16h-19h", "16h à 19h", "16h30-18h45")
+    Si trouvée, retourne un datetime de fin. Sinon, retourne start_time + 1 heure.
+    """
+    # Patterns pour matcher les intervalles horaires
+    patterns = [
+        r'(\d{1,2})h(\d{0,2})\s*[-à]\s*(\d{1,2})h(\d{0,2})',  # "16h-19h", "16h30-18h45"
+        r'(\d{1,2}):(\d{2})\s*[-à]\s*(\d{1,2}):(\d{2})',       # "16:00-19:00"
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            groups = match.groups()
+            end_hour = int(groups[2])
+            # Handle empty string for minutes (when format is just "16h-19h")
+            end_minute = int(groups[3]) if groups[3] else 0
+            
+            # Créer l'heure de fin avec la même date que start_time
+            dt_end = start_time.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
+            
+            # Si l'heure de fin est avant l'heure de début, c'est le jour suivant
+            if dt_end <= start_time:
+                dt_end += datetime.timedelta(days=1)
+            
+            return dt_end
+    
+    # Par défaut: 1 heure
+    return start_time + datetime.timedelta(hours=1)
 
 
 # ========================================
@@ -22,15 +69,6 @@ from typing import List, Dict, Any, Optional
 # ========================================
 
 def authenticate_google_calendar() -> Optional[Resource]:
-    # Google Calendar API - OAuth scopes
-    SCOPES = ["https://www.googleapis.com/auth/calendar"]
-
-# Chemins de fichiers
-    
-    TOKEN_PATH = "./json_files/token_calendar.json"
-    CREDS_PATH = "./json_files/credentials.json"
-
-# Paramètres du calendrier
     
     """
     Authentifie l'utilisateur avec l'API Google Calendar en utilisant 
@@ -78,9 +116,6 @@ def authenticate_google_calendar() -> Optional[Resource]:
 
 
 def create_events_from_json() -> Dict[str, int]:
-    INPUT_FILE = "./json_files/extracted_items.json"
-    CALENDAR_ID = "primary"
-    TIMEZONE = "Europe/Paris" 
     """
     Lit les données du fichier INPUT_FILE, filtre les éléments "agenda",
     et crée des événements dans Google Calendar après vérification des conflits,
@@ -136,11 +171,10 @@ def create_events_from_json() -> Dict[str, int]:
 
         # Correction pour les dates "naïves" : ajouter le fuseau horaire local
         if dt_start.tzinfo is None:
-            # S'assurer que la date a une information de fuseau horaire
             dt_start = dt_start.astimezone()
 
-        # Durée par défaut : 1 heure
-        dt_end = dt_start + datetime.timedelta(hours=1)
+        # Extraire l'heure de fin depuis le texte
+        dt_end = extract_end_time_from_text(text, dt_start)
 
         # Convertir en chaîne avec l'offset de fuseau horaire pour l'API
         start_str = dt_start.isoformat()

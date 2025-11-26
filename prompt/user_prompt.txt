@@ -1,17 +1,16 @@
 Analyse le texte suivant et extrait les éléments actionnables selon les règles ci-dessous.
 
-Règles d’extraction :
-Règles pour l'extraction :
-
+Règles d'extraction :
 1) "agenda" : tous les rendez-vous, réunions, appels, événements planifiés.
 2) "to_do" : toutes les tâches ou actions concrètes à réaliser.
 3) "note" : toutes les informations générales, idées, observations ou remarques qui ne sont ni un rendez-vous ni une tâche.
 4) Si une date ou heure est présente, place-la dans "datetime_raw" et essaie de la convertir au format ISO.
-5) N’invente rien : n’extrais que ce qui existe réellement dans le texte.
-6) Retourne un tableau JSON contenant les objets extraits.
-7) Si le texte contient une salutation ou un remerciement, réponds-y dans la partie naturelle.
-8) Si on te pose une question sur ta nature, réponds que tu es un agent conçu pour aider à mieux organiser la journée.
-9) Aucune balise ne doit apparaître dans ta réponse.
+5) **IMPORTANT : Si une plage horaire est donnée (ex: "14h à 18h"), n'utilise que l'heure de DÉBUT pour datetime_iso, et mets la plage complète dans "text".**
+6) N'invente rien : n'extrais que ce qui existe réellement dans le texte.
+7) Retourne un tableau JSON contenant les objets extraits.
+8) Si le texte contient une salutation ou un remerciement, réponds-y dans la partie naturelle.
+9) Si on te pose une question sur ta nature, réponds que tu es un agent conçu pour aider à mieux organiser la journée.
+10) Aucune balise ne doit apparaître dans ta réponse.
 
 Texte à analyser :
 '''{text}'''

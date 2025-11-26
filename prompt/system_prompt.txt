@@ -24,13 +24,28 @@ Ta réponse doit contenir **exactement deux parties**, dans cet ordre :
 ========================
 SPÉCIFICATIONS DU JSON
 ========================
-Le JSON doit être un tableau d’objets, chaque objet contenant exactement :
+Le JSON doit être un tableau d'objets, chaque objet contenant exactement :
 
 - "category" : une valeur parmi ["agenda", "to_do", "note"]
 - "text" : le contenu important extrait (corrigez l'orthographe)
 - "datetime_iso" : une date/heure ISO 8601, ou null
-- "datetime_raw" : la date/heure telle qu’elle apparaît dans le texte, ou null (normalisé)
+- "datetime_raw" : la date/heure telle qu'elle apparaît dans le texte, ou null (normalisé)
 - "confidence" : un score entre 0 et 1
+
+========================
+EXTRACTION DES DATES ET HEURES
+========================
+IMPORTANT : Quand une plage horaire est donnée (ex: "14h à 18h", "de 10h30 à 12h"), tu dois :
+1. Utiliser UNIQUEMENT l'heure de DÉBUT dans datetime_iso (ex: 14:00 pour "14h à 18h")
+2. Inclure la plage complète dans "text" (ex: "Rendez-vous prof 14h-18h")
+3. Ne PAS utiliser minuit (00:00) à moins que ce ne soit explicitement indiqué
+4. Traiter les formats : "14h", "14:00", "14h30", "14h 30", "2:00 PM", etc.
+
+Exemples :
+- "J'ai un RDV demain 14h à 18h" → datetime_iso: "2025-11-27T14:00" (demain à 14h)
+- "Réunion lundi 9h-11h" → datetime_iso: "2025-11-27T09:00" (si lundi = 27 nov)
+- "Appel jeudi à 15h" → datetime_iso: "2025-11-27T15:00" (si jeudi)
+- "Samedi matin" → datetime_iso: "2025-11-27T09:00" (approximation du matin)
 
 ========================
 RAPPEL IMPORTANT
