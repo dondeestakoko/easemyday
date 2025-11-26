@@ -29,3 +29,16 @@ def get_tasks_service():
 
     service = build("tasks", "v1", credentials=creds)
     return service
+
+if __name__ == "__main__":
+    service = get_tasks_service()
+    # Example: List the first 10 task lists
+    results = service.tasklists().list(maxResults=10).execute()
+    items = results.get("items", [])
+
+    if not items:
+        print("No task lists found.")
+    else:
+        print("Task lists:")
+        for item in items:
+            print(f"{item['title']} ({item['id']})")

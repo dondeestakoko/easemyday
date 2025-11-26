@@ -15,9 +15,36 @@ from agent_extract import (
     ajouter_items_si_user_accepte
 )
 from agent_write_agenda import create_events_from_json
+from get_tasks_service import get_tasks_service
 
 # Chargement .env
 load_dotenv()
+
+# -------------------------------------------------------
+# FONCTIONS UTILITAIRES
+# -------------------------------------------------------
+def get_google_tasks():
+    """Récupère les tâches de Google Tasks"""
+    try:
+        service = get_tasks_service()
+        tasklists = service.tasklists().list(maxResults=10).execute()
+        task_list_items = tasklists.get("items", [])
+        
+        all_tasks = []
+        for tasklist in task_list_items:
+            tasks = service.tasks().list(tasklist=tasklist["id"], maxResults=20).execute()
+            task_items = tasks.get("items", [])
+            for task in task_items:
+                all_tasks.append({
+                    "title": task.get("title", "Sans titre"),
+                    "status": task.get("status", "needsAction"),
+                    "list": tasklist.get("title", "Sans nom")
+                })
+        return all_tasks
+    except Exception as e:
+        st.error(f"Erreur lors de la récupération des tâches: {e}")
+        return []
+
 
 # -------------------------------------------------------
 # TRANSCRIPTION AUDIO
@@ -58,6 +85,38 @@ def transcribe_audio_memory(audio_bytes):
 # -------------------------------------------------------
 st.set_page_config(page_title="EaseMyDay", layout="wide", page_icon="🧠")
 st.title("EaseMyDay — Assistant Intelligent 🧠")
+
+# Sidebar with Tasks
+with st.sidebar:
+    st.subheader("📝 Mes Tâches")
+    
+    if st.button("🔄 Actualiser les tâches", key="refresh_tasks"):
+        st.rerun()
+    
+    try:
+        tasks = get_google_tasks()
+        
+        if tasks:
+            # Séparer les tâches complétées et en attente
+            pending_tasks = [t for t in tasks if t["status"] == "needsAction"]
+            completed_tasks = [t for t in tasks if t["status"] == "completed"]
+            
+            st.markdown(f"**Tâches en attente:** {len(pending_tasks)}")
+            for task in pending_tasks[:10]:  # Afficher max 10
+                st.checkbox(
+                    f"{task['title']} ({task['list']})",
+                    value=False,
+                    key=f"task_{task['title']}"
+                )
+            
+            if completed_tasks:
+                with st.expander(f"✅ Tâches complétées ({len(completed_tasks)})"):
+                    for task in completed_tasks[:10]:
+                        st.markdown(f"~~{task['title']}~~ ({task['list']})")
+        else:
+            st.info("Aucune tâche trouvée")
+    except Exception as e:
+        st.warning(f"Impossible de charger les tâches: {e}")
 
 col_chat, col_calendar = st.columns([2, 1], gap="large")
 
