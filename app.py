@@ -14,6 +14,7 @@ from agent_extract import (
     normaliser_dates,
     ajouter_items_si_user_accepte
 )
+from agent_write_agenda import create_events_from_json
 
 # Chargement .env
 load_dotenv()
@@ -108,7 +109,7 @@ with col_chat:
     if audio_bytes and not st.session_state.audio_processed:
         with st.spinner("Transcription en cours..."):
             final_input = transcribe_audio_memory(audio_bytes)
-        st.session_state.audio_processed = True   # ⛔ bloque boucle audio
+        st.session_state.audio_processed = True   #  bloque boucle audio
 
     # -------------------------------------------------------
     # TEXTE
@@ -163,15 +164,26 @@ with col_chat:
 
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ Oui, ajouter"):
+            if st.button("Oui, ajouter"):
                 ajouter_items_si_user_accepte(st.session_state.last_extracted, True)
                 st.success("Les éléments ont été ajoutés.")
+                
+                # Si des éléments "agenda" existent, créer les événements Google Calendar
+                agenda_items = [item for item in st.session_state.last_extracted 
+                               if item.get("category") == "agenda"]
+                if agenda_items:
+                    with st.spinner("Ajout des événements au calendrier..."):
+                        result = create_events_from_json()
+                        st.success(f" {result['created']} événement(s) ajouté(s) au calendrier!")
+                        if result['skipped'] > 0:
+                            st.warning(f" {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
+                
                 st.session_state.pending_save = False
                 st.session_state.last_extracted = None
                 st.rerun()
 
         with col2:
-            if st.button("❌ Non, annuler"):
+            if st.button("Non, annuler"):
                 st.info("Aucun élément n'a été ajouté.")
                 st.session_state.pending_save = False
                 st.session_state.last_extracted = None

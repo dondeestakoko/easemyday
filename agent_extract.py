@@ -13,7 +13,7 @@ MODEL_NAME = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT_FILE = "./prompt/system_prompt.txt"
 USER_PROMPT_FILE = "./prompt/user_prompt.txt"
-OUTPUT_JSON_FILE = "extracted_items.json"
+OUTPUT_JSON_FILE = "./json_files/extracted_items.json"
 
 # -------------------------------------------------
 # Charger les prompts

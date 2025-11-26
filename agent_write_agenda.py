@@ -1,157 +1,214 @@
 import json
 import datetime
 import os.path
+import sys
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.discovery import Resource
 from google.auth.transport.requests import Request
+from typing import List, Dict, Any, Optional
 
-# ----------------------------------------
-# Google Calendar API - OAuth scopes
-# ----------------------------------------
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
+# ========================================
+# CONSTANTES DE CONFIGURATION GLOBALES
+# ========================================
 
-# ----------------------------------------
-# Load JSON file
-# ----------------------------------------
-INPUT_FILE = "./json_files/extracted_items.json"
 
-# Check if file exists to avoid crash
-if not os.path.exists(INPUT_FILE):
-    print(f"File {INPUT_FILE} not found.")
-    exit()
 
-with open(INPUT_FILE, "r", encoding="utf-8") as f:
-    data = json.load(f)
 
-# Filter items with category = "agenda"
-agenda_items = [item for item in data if item.get("category") == "agenda"]
+# ========================================
+# FONCTIONS
+# ========================================
 
-print(f"🔍 {len(agenda_items)} événements agenda trouvés à traiter.")
+def authenticate_google_calendar() -> Optional[Resource]:
+    # Google Calendar API - OAuth scopes
+    SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-# ----------------------------------------
-# Authenticate Google Calendar
-# ----------------------------------------
-creds = None
-token_path = "./json_files/token_calendar.json"
-creds_path = "./json_files/credentials.json"
-
-try:
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-except Exception as e:
-    print(f"Error loading token: {e}")
-
-if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        if not os.path.exists(creds_path):
-             print("Credentials file not found.")
-             exit()
-        flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
-        creds = flow.run_local_server(port=0)
-
-    # Save token
-    with open(token_path, "w", encoding="utf-8") as token:
-        token.write(creds.to_json())
-
-service = build("calendar", "v3", credentials=creds)
-
-# ----------------------------------------
-# Create events in Google Calendar
-# ----------------------------------------
-created_count = 0
-skipped_count = 0
-
-print("----------------------------------------")
-
-for item in agenda_items:
-    text = item.get("text", "Sans titre")
-    date_iso = item.get("datetime_iso")
-
-    if not date_iso:
-        print(f" Ignoré (pas de date): {text}")
-        continue
-
-    # 1. Calculate Start and End times
-    try:
-        dt_start = datetime.datetime.fromisoformat(date_iso)
-    except ValueError:
-        print(f" Format de date invalide pour : {text} ({date_iso})")
-        continue
-
-    # --- FIX CRITIQUE POUR L'ERREUR 400 ---
-    # L'API Google 'list' exige un offset timezone (ex: +01:00).
-    # Si la date est 'naïve' (sans info de fuseau), on lui ajoute le fuseau local.
-    if dt_start.tzinfo is None:
-        dt_start = dt_start.astimezone() 
-    # --------------------------------------
-
-    # Default duration: 1 hour
-    dt_end = dt_start + datetime.timedelta(hours=1)
-
-    # Convert back to string for the API (Maintenant avec offset !)
-    start_str = dt_start.isoformat()
-    end_str = dt_end.isoformat()
-
-    # ----------------------------------------
-    # 2. CONFLICT CHECK (La vérification)
-    # ----------------------------------------
-    try:
-        events_result = service.events().list(
-            calendarId='primary',
-            timeMin=start_str,
-            timeMax=end_str,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-
-        existing_events = events_result.get('items', [])
-
-        if existing_events:
-            # CONFLICT FOUND
-            collision_summary = existing_events[0]['summary']
-            print(f" Space is taken: '{text}' at {start_str}")
-            print(f"   ↳ Conflict with: '{collision_summary}'")
-            skipped_count += 1
-            continue # Skip to the next item in loop
-
-    except Exception as e:
-        print(f" Erreur lors de la vérification du conflit : {e}")
-        # En cas d'erreur de vérification, on peut choisir de continuer ou d'arrêter.
-        # Ici on continue pour essayer d'insérer quand même ou passer au suivant.
-        continue
-
-    # ----------------------------------------
-    # 3. If no conflict, create the event
-    # ----------------------------------------
-    event_body = {
-        "summary": text,
-        "description": f"Ajouté par EaseMyDay. \nNote originale: {item.get('text', '')}",
-        "start": {
-            "dateTime": start_str,
-            # Le timeZone est moins critique ici car start_str a maintenant un offset,
-            # mais on le garde pour la cohérence de l'affichage dans Google Agenda.
-            "timeZone": "Europe/Paris" 
-        },
-        "end": {
-            "dateTime": end_str,
-            "timeZone": "Europe/Paris"
-        },
-    }
-
-    try:
-        created_event = service.events().insert(
-            calendarId="primary", body=event_body
-        ).execute()
-
-        created_count += 1
-        print(f"✔️ Événement ajouté : {created_event.get('summary')} ({start_str})")
+# Chemins de fichiers
     
-    except Exception as e:
-        print(f" Error adding event: {e}")
+    TOKEN_PATH = "./json_files/token_calendar.json"
+    CREDS_PATH = "./json_files/credentials.json"
 
-print("----------------------------------------")
-print(f"🎉 Résumé : {created_count} ajoutés, {skipped_count} bloqués (créneau pris).")
+# Paramètres du calendrier
+    
+    """
+    Authentifie l'utilisateur avec l'API Google Calendar en utilisant 
+    les constantes TOKEN_PATH, CREDS_PATH et SCOPES.
+
+    Returns:
+        Un objet de service Google Calendar API, ou None en cas d'échec critique.
+    """
+    creds = None
+
+    # Tenter de charger les identifiants existants
+    try:
+        if os.path.exists(TOKEN_PATH):
+            creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+    except Exception as e:
+        print(f"Erreur lors du chargement du jeton existant : {e}")
+
+    # Si les identifiants ne sont pas valides ou n'existent pas
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            # Rafraîchir le jeton
+            print("Jeton expiré, rafraîchissement...")
+            creds.refresh(Request())
+        else:
+            # Exécuter le flux OAuth2 complet
+            if not os.path.exists(CREDS_PATH):
+                print(f"Fichier d'identifiants client non trouvé : {CREDS_PATH}")
+                return None
+            print("Démarrage du flux d'authentification OAuth...")
+            flow = InstalledAppFlow.from_client_secrets_file(CREDS_PATH, SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        # Sauvegarder le nouveau jeton
+        with open(TOKEN_PATH, "w", encoding="utf-8") as token:
+            token.write(creds.to_json())
+        print(f"Jeton sauvegardé dans {TOKEN_PATH}.")
+
+    # Construire l'objet de service
+    try:
+        service = build("calendar", "v3", credentials=creds)
+        return service
+    except Exception as e:
+        print(f"Erreur lors de la construction du service Google Calendar : {e}")
+        return None
+
+
+def create_events_from_json() -> Dict[str, int]:
+    INPUT_FILE = "./json_files/extracted_items.json"
+    CALENDAR_ID = "primary"
+    TIMEZONE = "Europe/Paris" 
+    """
+    Lit les données du fichier INPUT_FILE, filtre les éléments "agenda",
+    et crée des événements dans Google Calendar après vérification des conflits,
+    en utilisant les constantes globales.
+
+    Returns:
+        Un dictionnaire contenant le nombre d'événements créés et ignorés.
+    """
+    # ----------------------------------------
+    # 1. Authentification
+    # ----------------------------------------
+    service = authenticate_google_calendar()
+    if service is None:
+        return {"created": 0, "skipped": 0}
+
+    # ----------------------------------------
+    # 2. Chargement et filtrage des données
+    # ----------------------------------------
+    if not os.path.exists(INPUT_FILE):
+        print(f"Fichier d'entrée non trouvé : {INPUT_FILE}")
+        return {"created": 0, "skipped": 0}
+
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        data: List[Dict[str, Any]] = json.load(f)
+
+    # Filtrer les éléments avec category = "agenda"
+    agenda_items = [item for item in data if item.get("category") == "agenda"]
+    print(f"{len(agenda_items)} événements 'agenda' trouvés à traiter.")
+    print("-" * 40)
+
+    # ----------------------------------------
+    # 3. Création des événements
+    # ----------------------------------------
+    created_count = 0
+    skipped_count = 0
+
+    for item in agenda_items:
+        text: str = item.get("text", "Sans titre")
+        date_iso: Optional[str] = item.get("datetime_iso")
+
+        if not date_iso:
+            print(f"-> Ignoré (pas de date): {text}")
+            skipped_count += 1
+            continue
+
+        # Calculer les heures de début et de fin
+        try:
+            dt_start = datetime.datetime.fromisoformat(date_iso)
+        except ValueError:
+            print(f"| Format de date invalide pour : {text} ({date_iso})")
+            skipped_count += 1
+            continue
+
+        # Correction pour les dates "naïves" : ajouter le fuseau horaire local
+        if dt_start.tzinfo is None:
+            # S'assurer que la date a une information de fuseau horaire
+            dt_start = dt_start.astimezone()
+
+        # Durée par défaut : 1 heure
+        dt_end = dt_start + datetime.timedelta(hours=1)
+
+        # Convertir en chaîne avec l'offset de fuseau horaire pour l'API
+        start_str = dt_start.isoformat()
+        end_str = dt_end.isoformat()
+
+        # ----------------------------------------
+        # Vérification des conflits
+        # ----------------------------------------
+        try:
+            events_result = service.events().list(
+                calendarId=CALENDAR_ID,
+                timeMin=start_str,
+                timeMax=end_str,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+
+            existing_events = events_result.get('items', [])
+
+            if existing_events:
+                # CONFLIT TROUVÉ
+                collision_summary = existing_events[0].get('summary', 'Événement inconnu')
+                print(f"X Créneau pris: '{text}' à {start_str}")
+                print(f"    -> Conflit avec : '{collision_summary}'")
+                skipped_count += 1
+                continue
+        
+        except Exception as e:
+            print(f"X Erreur lors de la vérification du conflit : {e}")
+            skipped_count += 1 
+            continue
+
+        # ----------------------------------------
+        # Création de l'événement
+        # ----------------------------------------
+        event_body = {
+            "summary": text,
+            "description": f"Ajouté par EaseMyDay. \nNote originale: {item.get('text', '')}",
+            "start": {
+                "dateTime": start_str,
+                "timeZone": TIMEZONE
+            },
+            "end": {
+                "dateTime": end_str,
+                "timeZone": TIMEZONE
+            },
+        }
+
+        try:
+            created_event = service.events().insert(
+                calendarId=CALENDAR_ID, body=event_body
+            ).execute()
+
+            created_count += 1
+            print(f"V Événement ajouté : {created_event.get('summary')} ({start_str})")
+        
+        except Exception as e:
+            print(f"X Erreur lors de l'ajout de l'événement : {e}")
+            skipped_count += 1 
+
+    print("-" * 40)
+    print(f"Résumé : {created_count} ajoutés, {skipped_count} bloqués (créneau pris ou erreur).")
+
+    return {"created": created_count, "skipped": skipped_count}
+
+
+# ========================================
+# EXECUTION DU SCRIPT
+# ========================================
+if __name__ == "__main__":
+    results = create_events_from_json()
