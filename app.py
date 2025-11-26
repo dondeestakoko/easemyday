@@ -84,11 +84,17 @@ with col_chat:
     if "pending_save" not in st.session_state:
         st.session_state.pending_save = False
 
-    # Display all messages
+    # ⛔ IMPORTANT : flag pour empêcher la boucle audio
+    if "audio_processed" not in st.session_state:
+        st.session_state.audio_processed = False
+
+    # Display messages
     for msg in st.session_state.messages:
         st.chat_message(msg["role"]).write(msg["content"])
 
-    # AUDIO
+    # -------------------------------------------------------
+    # AUDIO (corrigé)
+    # -------------------------------------------------------
     audio_bytes = audio_recorder(
         text="",
         recording_color="#e8b62c",
@@ -99,13 +105,18 @@ with col_chat:
 
     final_input = None
 
-    if audio_bytes:
+    if audio_bytes and not st.session_state.audio_processed:
         with st.spinner("Transcription en cours..."):
             final_input = transcribe_audio_memory(audio_bytes)
+        st.session_state.audio_processed = True   # ⛔ bloque boucle audio
 
+    # -------------------------------------------------------
+    # TEXTE
+    # -------------------------------------------------------
     text_prompt = st.chat_input("Pose ta question ou donne une instruction...")
     if text_prompt:
         final_input = text_prompt
+        st.session_state.audio_processed = False  # prêt pour nouveau message audio
 
     # -------------------------------------------------------
     # TRAITEMENT MESSAGE
@@ -121,10 +132,14 @@ with col_chat:
 
         st.session_state.last_extracted = json_data
         
-        # Vérifier la présence de vrais éléments à enregistrer
+        # Détecter si un vrai item existe
         has_extractable_items = (
             isinstance(json_data, list)
-            and any(item.get("category") is not None and item.get("text") is not None for item in json_data)
+            and any(
+                item.get("category") not in [None, ""] and 
+                item.get("text") not in [None, ""]
+                for item in json_data
+            )
         )
         
         response_text = message_user

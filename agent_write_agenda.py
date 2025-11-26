@@ -72,14 +72,14 @@ for item in agenda_items:
     date_iso = item.get("datetime_iso")
 
     if not date_iso:
-        print(f"⚠️ Ignoré (pas de date): {text}")
+        print(f" Ignoré (pas de date): {text}")
         continue
 
     # 1. Calculate Start and End times
     try:
         dt_start = datetime.datetime.fromisoformat(date_iso)
     except ValueError:
-        print(f"⚠️ Format de date invalide pour : {text} ({date_iso})")
+        print(f" Format de date invalide pour : {text} ({date_iso})")
         continue
 
     # --- FIX CRITIQUE POUR L'ERREUR 400 ---
@@ -113,13 +113,13 @@ for item in agenda_items:
         if existing_events:
             # CONFLICT FOUND
             collision_summary = existing_events[0]['summary']
-            print(f"❌ Space is taken: '{text}' at {start_str}")
+            print(f" Space is taken: '{text}' at {start_str}")
             print(f"   ↳ Conflict with: '{collision_summary}'")
             skipped_count += 1
             continue # Skip to the next item in loop
 
     except Exception as e:
-        print(f"⚠️ Erreur lors de la vérification du conflit : {e}")
+        print(f" Erreur lors de la vérification du conflit : {e}")
         # En cas d'erreur de vérification, on peut choisir de continuer ou d'arrêter.
         # Ici on continue pour essayer d'insérer quand même ou passer au suivant.
         continue
@@ -151,7 +151,7 @@ for item in agenda_items:
         print(f"✔️ Événement ajouté : {created_event.get('summary')} ({start_str})")
     
     except Exception as e:
-        print(f"⚠️ Error adding event: {e}")
+        print(f" Error adding event: {e}")
 
 print("----------------------------------------")
 print(f"🎉 Résumé : {created_count} ajoutés, {skipped_count} bloqués (créneau pris).")
