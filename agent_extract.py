@@ -34,11 +34,15 @@ def appeler_groq(text_brut: str):
         "Content-Type": "application/json",
     }
 
+    # Add today's date to context for relative date parsing
+    today = datetime.now().strftime("%Y-%m-%d")
+    text_with_context = f"[Current date: {today}]\n\n{text_brut}"
+
     payload = {
         "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": USER_PROMPT_TEMPLATE.format(text=text_brut)},
+            {"role": "user", "content": USER_PROMPT_TEMPLATE.format(text=text_with_context)},
         ],
         "temperature": 0.0,
         "max_tokens": 1000,
