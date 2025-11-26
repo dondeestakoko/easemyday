@@ -104,15 +104,22 @@ with col_chat:
     chat_container = st.container()
 
     # -------------------------------------------------------
-    # AUDIO
+    # AUDIO avec limitation de 7 secondes
     # -------------------------------------------------------
-    audio_bytes = audio_recorder(
-        text="",
-        recording_color="#e8b62c",
-        neutral_color="#6aa36f",
-        icon_name="microphone",
-        icon_size="2x"
-    )
+    st.subheader("🎤 Enregistrement vocal")
+    col_mic, col_timer = st.columns([3, 1])
+    
+    with col_mic:
+        audio_bytes = audio_recorder(
+            text="Cliquez pour enregistrer",
+            recording_color="#e8b62c",
+            neutral_color="#6aa36f",
+            icon_name="microphone",
+            icon_size="2x"
+        )
+    
+    with col_timer:
+        st.markdown("**Max: 7s**")
 
     final_input = None
 
@@ -123,7 +130,8 @@ with col_chat:
         # Only process if it's new audio (not the same as last time)
         if audio_hash != st.session_state.last_audio_bytes_hash:
             st.session_state.last_audio_bytes_hash = audio_hash
-            with st.spinner("Transcription en cours..."):
+            st.success("✅ Enregistrement reçu - Transcription en cours...")
+            with st.spinner("🔄 Transcription en cours..."):
                 final_input = transcribe_audio_memory(audio_bytes)
 
     # -------------------------------------------------------
