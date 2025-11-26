@@ -15,7 +15,7 @@ load_dotenv()
 API_KEY = os.getenv("GROQ_API_KEY")
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-OUTPUT_FILE = "google_agenda_structured.json" # Fichier de sortie
+OUTPUT_FILE = "./json_files/google_agenda_structured.json" # Fichier de sortie
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 # -------------------------------------------------------------

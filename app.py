@@ -65,7 +65,7 @@ col_chat, col_calendar = st.columns([2, 1], gap="large")
 # -------------------------------------------------------
 with col_calendar:
     st.subheader(" Mon Google Agenda")
-    calendar_url = "https://calendar.google.com/calendar/embed?src=ticketsdata5%40gmail.com&ctz=Europe%2FParis"
+    calendar_url = "https://calendar.google.com/calendar/embed?src=lawficenloki%40gmail.com&ctz=Europe%2FParis"
     components.iframe(src=calendar_url, height=600, scrolling=True)
 
 
