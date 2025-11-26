@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
-import get_tasks_service 
+from get_tasks_service import get_tasks_service 
 
 
 class EaseTasksAgent:
@@ -83,3 +83,10 @@ class EaseTasksAgent:
             body=task
         ).execute()
         return updated
+
+if __name__ == "__main__":
+    agent = EaseTasksAgent()
+    lists = agent.list_tasklists()
+    print("Task Lists:")
+    for lst in lists:
+        print(f"- {lst['title']} (ID: {lst['id']})")

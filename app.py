@@ -6,6 +6,7 @@ import io
 import requests
 from dotenv import load_dotenv
 from audio_recorder_streamlit import audio_recorder
+from datetime import datetime
 
 # Fonctions de ton agent
 from agent_extract import (
@@ -15,6 +16,7 @@ from agent_extract import (
     ajouter_items_si_user_accepte
 )
 from agent_write_agenda import create_events_from_json
+from agent_task import EaseTasksAgent
 from get_tasks_service import get_tasks_service
 
 # Chargement .env
@@ -38,12 +40,63 @@ def get_google_tasks():
                 all_tasks.append({
                     "title": task.get("title", "Sans titre"),
                     "status": task.get("status", "needsAction"),
-                    "list": tasklist.get("title", "Sans nom")
+                    "list": tasklist.get("title", "Sans nom"),
+                    "list_id": tasklist.get("id"),
+                    "task_id": task.get("id")
                 })
         return all_tasks
     except Exception as e:
         st.error(f"Erreur lors de la récupération des tâches: {e}")
         return []
+
+
+def add_tasks_to_google(json_data):
+    """Ajoute les tâches de catégorie 'to_do' à Google Tasks"""
+    try:
+        agent = EaseTasksAgent()
+        tasklists = agent.list_tasklists()
+        
+        if not tasklists:
+            st.warning("Aucune liste de tâches trouvée dans Google Tasks")
+            return {"created": 0, "skipped": 0}
+        
+        # Utiliser la première liste de tâches
+        default_tasklist = tasklists[0]["id"]
+        
+        created_count = 0
+        skipped_count = 0
+        
+        for item in json_data:
+            if item.get("category") == "to_do":
+                title = item.get("text", "Sans titre")
+                due_date = item.get("datetime_iso")
+                notes = item.get("datetime_raw")
+                
+                try:
+                    # Convertir la date ISO si elle existe
+                    due_datetime = None
+                    if due_date:
+                        try:
+                            due_datetime = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
+                        except:
+                            pass
+                    
+                    agent.create_task(
+                        tasklist_id=default_tasklist,
+                        title=title,
+                        due=due_datetime,
+                        notes=notes
+                    )
+                    created_count += 1
+                    print(f"✓ Tâche créée: {title}")
+                except Exception as e:
+                    skipped_count += 1
+                    print(f"✗ Erreur lors de la création de {title}: {e}")
+        
+        return {"created": created_count, "skipped": skipped_count}
+    except Exception as e:
+        st.error(f"Erreur lors de l'ajout des tâches: {e}")
+        return {"created": 0, "skipped": 0}
 
 
 # -------------------------------------------------------
@@ -270,11 +323,21 @@ with col_chat:
                 agenda_items = [item for item in st.session_state.last_extracted 
                                if item.get("category") == "agenda"]
                 if agenda_items:
-                    with st.spinner("Ajout des événements au calendrier..."):
+                    with st.spinner("📅 Ajout des événements au calendrier..."):
                         result = create_events_from_json()
                         st.success(f"📅 {result['created']} événement(s) ajouté(s) au calendrier!")
                         if result['skipped'] > 0:
                             st.warning(f"⚠️ {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
+                
+                # Si des éléments "to_do" existent, créer les tâches Google Tasks
+                todo_items = [item for item in st.session_state.last_extracted 
+                             if item.get("category") == "to_do"]
+                if todo_items:
+                    with st.spinner("📝 Ajout des tâches..."):
+                        result = add_tasks_to_google(st.session_state.last_extracted)
+                        st.success(f"✅ {result['created']} tâche(s) ajoutée(s) à Google Tasks!")
+                        if result['skipped'] > 0:
+                            st.warning(f"⚠️ {result['skipped']} tâche(s) ignorée(s)")
                 
                 st.session_state.pending_save = False
                 st.session_state.last_extracted = None
