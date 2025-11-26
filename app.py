@@ -66,6 +66,11 @@ col_chat, col_calendar = st.columns([2, 1], gap="large")
 # -------------------------------------------------------
 with col_calendar:
     st.subheader(" Mon Google Agenda")
+    
+    # Refresh button
+    if st.button("🔄 Actualiser l'agenda", key="refresh_calendar"):
+        st.rerun()
+    
     calendar_url = "https://calendar.google.com/calendar/embed?src=lawficenloki%40gmail.com&ctz=Europe%2FParis"
     components.iframe(src=calendar_url, height=600, scrolling=True)
 
@@ -89,12 +94,17 @@ with col_chat:
     if "audio_processed" not in st.session_state:
         st.session_state.audio_processed = False
 
-    # Display messages
-    for msg in st.session_state.messages:
-        st.chat_message(msg["role"]).write(msg["content"])
+    if "last_audio_bytes_hash" not in st.session_state:
+        st.session_state.last_audio_bytes_hash = None
+
+    if "last_message_id" not in st.session_state:
+        st.session_state.last_message_id = None
+
+    # Create a container for messages that we can update
+    chat_container = st.container()
 
     # -------------------------------------------------------
-    # AUDIO (corrigé)
+    # AUDIO
     # -------------------------------------------------------
     audio_bytes = audio_recorder(
         text="",
@@ -106,10 +116,15 @@ with col_chat:
 
     final_input = None
 
-    if audio_bytes and not st.session_state.audio_processed:
-        with st.spinner("Transcription en cours..."):
-            final_input = transcribe_audio_memory(audio_bytes)
-        st.session_state.audio_processed = True   #  bloque boucle audio
+    if audio_bytes:
+        # Create a hash of the audio to detect if it's the same audio
+        audio_hash = hash(audio_bytes.tobytes() if hasattr(audio_bytes, 'tobytes') else str(audio_bytes))
+        
+        # Only process if it's new audio (not the same as last time)
+        if audio_hash != st.session_state.last_audio_bytes_hash:
+            st.session_state.last_audio_bytes_hash = audio_hash
+            with st.spinner("Transcription en cours..."):
+                final_input = transcribe_audio_memory(audio_bytes)
 
     # -------------------------------------------------------
     # TEXTE
@@ -117,46 +132,62 @@ with col_chat:
     text_prompt = st.chat_input("Pose ta question ou donne une instruction...")
     if text_prompt:
         final_input = text_prompt
-        st.session_state.audio_processed = False  # prêt pour nouveau message audio
+        # Reset audio hash so next audio can be processed
+        st.session_state.last_audio_bytes_hash = None
 
     # -------------------------------------------------------
     # TRAITEMENT MESSAGE
     # -------------------------------------------------------
     if final_input:
-
-        st.session_state.messages.append({"role": "user", "content": final_input})
-
-        with st.spinner("Analyse en cours..."):
-            raw = appeler_groq(final_input)
-            message_user, json_data = extraire_message_et_items(raw)
-            json_data = normaliser_dates(json_data)
-
-        st.session_state.last_extracted = json_data
+        # Create unique message ID to prevent duplicate processing
+        message_id = hash(final_input + str(len(st.session_state.messages)))
         
-        # Détecter si un vrai item existe
-        has_extractable_items = (
-            isinstance(json_data, list)
-            and any(
-                item.get("category") not in [None, ""] and 
-                item.get("text") not in [None, ""]
-                for item in json_data
+        if st.session_state.last_message_id != message_id:
+            st.session_state.last_message_id = message_id
+            st.session_state.messages.append({"role": "user", "content": final_input})
+
+            with st.spinner("Analyse en cours..."):
+                raw = appeler_groq(final_input)
+                message_user, json_data = extraire_message_et_items(raw)
+                json_data = normaliser_dates(json_data)
+
+            st.session_state.last_extracted = json_data
+            
+            # Détecter si un vrai item existe
+            has_extractable_items = (
+                isinstance(json_data, list)
+                and any(
+                    item.get("category") not in [None, ""] and 
+                    item.get("text") not in [None, ""]
+                    for item in json_data
+                )
             )
-        )
-        
-        response_text = message_user
+            
+            response_text = message_user
 
-        if has_extractable_items:
-            response_text += "\n\nSouhaites-tu que je les ajoute ?"
-            st.session_state.pending_save = True
+            if has_extractable_items:
+                response_text += "\n\nSouhaites-tu que je les ajoute ?"
+                st.session_state.pending_save = True
+            else:
+                st.session_state.pending_save = False
+                response_text += "\n\nAucun élément à enregistrer."
+
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
+            
+            # Reset audio flag to prevent duplicate processing
+            st.session_state.audio_processed = False
+    
+    # Display all messages in the container (after processing)
+    with chat_container:
+        for msg in st.session_state.messages:
+            st.chat_message(msg["role"]).write(msg["content"])
         else:
-            st.session_state.pending_save = False
-            response_text += "\n\nAucun élément à enregistrer."
-
-        st.session_state.messages.append({"role": "assistant", "content": response_text})
-        st.rerun()
+            # Message was already processed, clear the flag so next message can be processed
+            if not st.session_state.pending_save:
+                st.session_state.last_message_id = None
 
     # -------------------------------------------------------
-    # OPTIONS DE SAUVEGARDE
+    # OPTIONS DE SAUVEGARDE (avant le traitement des messages)
     # -------------------------------------------------------
     if st.session_state.pending_save and st.session_state.last_extracted:
         st.write("---")
@@ -174,17 +205,17 @@ with col_chat:
                 if agenda_items:
                     with st.spinner("Ajout des événements au calendrier..."):
                         result = create_events_from_json()
-                        st.success(f" {result['created']} événement(s) ajouté(s) au calendrier!")
+                        st.success(f"📅 {result['created']} événement(s) ajouté(s) au calendrier!")
                         if result['skipped'] > 0:
-                            st.warning(f" {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
+                            st.warning(f"⚠️ {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
                 
                 st.session_state.pending_save = False
                 st.session_state.last_extracted = None
-                st.rerun()
+                st.session_state.last_message_id = None  # Clear to prevent re-processing
 
         with col2:
             if st.button("Non, annuler"):
                 st.info("Aucun élément n'a été ajouté.")
                 st.session_state.pending_save = False
                 st.session_state.last_extracted = None
-                st.rerun()
+                st.session_state.last_message_id = None  # Clear to prevent re-processing
