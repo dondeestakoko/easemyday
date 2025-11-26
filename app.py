@@ -19,6 +19,12 @@ from agent_write_agenda import create_events_from_json
 from agent_task import EaseTasksAgent
 from get_tasks_service import get_tasks_service
 
+# Notes management
+import uuid
+
+NOTES_JSON_FILE = "./json_files/notes.json"
+
+
 # Chargement .env
 load_dotenv()
 
@@ -99,6 +105,70 @@ def add_tasks_to_google(json_data):
         return {"created": 0, "skipped": 0}
 
 
+def load_notes():
+    """Charge les notes du fichier JSON"""
+    if not os.path.exists(NOTES_JSON_FILE):
+        return []
+    try:
+        with open(NOTES_JSON_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+
+def save_notes(notes):
+    """Sauvegarde les notes dans le fichier JSON"""
+    os.makedirs("./json_files", exist_ok=True)
+    try:
+        with open(NOTES_JSON_FILE, "w", encoding="utf-8") as f:
+            json.dump(notes, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Erreur lors de la sauvegarde des notes: {e}")
+
+
+def get_notes():
+    """Récupère les notes"""
+    return load_notes()
+
+
+def add_notes_to_local(json_data):
+    """Ajoute les notes de catégorie 'note' au fichier JSON local"""
+    notes = load_notes()
+    created_count = 0
+    skipped_count = 0
+    
+    for item in json_data:
+        if item.get("category") == "note":
+            title = item.get("text", "Note sans titre")[:50]
+            text = item.get("text", "")
+            datetime_raw = item.get("datetime_raw")
+            
+            try:
+                note = {
+                    "id": str(uuid.uuid4()),
+                    "title": title,
+                    "text": text,
+                    "datetime": datetime_raw,
+                    "created_at": datetime.now().isoformat(),
+                    "archived": False
+                }
+                
+                notes.append(note)
+                created_count += 1
+                print(f"✓ Note créée: {title}")
+            except Exception as e:
+                skipped_count += 1
+                print(f"✗ Erreur lors de la création de {title}: {e}")
+    
+    save_notes(notes)
+    return {"created": created_count, "skipped": skipped_count}
+
+
+
+
+
+
+
 # -------------------------------------------------------
 # TRANSCRIPTION AUDIO
 # -------------------------------------------------------
@@ -139,7 +209,7 @@ def transcribe_audio_memory(audio_bytes):
 st.set_page_config(page_title="EaseMyDay", layout="wide", page_icon="🧠")
 st.title("EaseMyDay — Assistant Intelligent 🧠")
 
-# Sidebar with Tasks
+# Sidebar with Tasks and Notes
 with st.sidebar:
     st.subheader("📝 Mes Tâches")
     
@@ -170,6 +240,31 @@ with st.sidebar:
             st.info("Aucune tâche trouvée")
     except Exception as e:
         st.warning(f"Impossible de charger les tâches: {e}")
+    
+    st.divider()
+    
+    st.subheader("📝 Mes Notes")
+    
+    if st.button("🔄 Actualiser les notes", key="refresh_notes"):
+        st.rerun()
+    
+    try:
+        notes = get_notes()
+        
+        if notes:
+            active_notes = [n for n in notes if not n.get("archived", False)]
+            archived_notes = [n for n in notes if n.get("archived", False)]
+            
+            st.markdown(f"**Notes actives:** {len(active_notes)}")
+            for note in active_notes[:10]:
+                with st.expander(f"📄 {note['title'][:30]}"):
+                    st.write(note['text'][:200])
+                    if len(note['text']) > 200:
+                        st.caption("... (texte coupé)")
+        else:
+            st.info("Aucune note trouvée")
+    except Exception as e:
+        st.warning(f"Impossible de charger les notes: {e}")
 
 col_chat, col_calendar = st.columns([2, 1], gap="large")
 
@@ -338,6 +433,16 @@ with col_chat:
                         st.success(f"✅ {result['created']} tâche(s) ajoutée(s) à Google Tasks!")
                         if result['skipped'] > 0:
                             st.warning(f"⚠️ {result['skipped']} tâche(s) ignorée(s)")
+                
+                # Si des éléments "note" existent, créer les notes locales
+                note_items = [item for item in st.session_state.last_extracted 
+                             if item.get("category") == "note"]
+                if note_items:
+                    with st.spinner("📌 Ajout des notes..."):
+                        result = add_notes_to_local(st.session_state.last_extracted)
+                        st.success(f"📌 {result['created']} note(s) ajoutée(s)!")
+                        if result['skipped'] > 0:
+                            st.warning(f"⚠️ {result['skipped']} note(s) ignorée(s)")
                 
                 st.session_state.pending_save = False
                 st.session_state.last_extracted = None

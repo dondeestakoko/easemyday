@@ -30,6 +30,7 @@ def load_file(path: str) -> str:
 # -------------------------------------------------------------
 # Appel Groq + Llama
 # -------------------------------------------------------------
+
 def groq_format(prompt: str, raw_content: str) -> str:
     payload = {
         "model": "llama-3.3-70b-versatile",
