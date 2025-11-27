@@ -56,6 +56,28 @@ class EaseTasksAgent:
         ).execute()
         return updated
 
+    def reopen_task(self, tasklist_id: str, task_id: str) -> Dict:
+        """Revert a completed task back to pending (needsAction).
+
+        Google Tasks uses the ``status`` field where ``"needsAction"`` indicates a pending task.
+        This method fetches the task, sets its status back to ``needsAction`` and updates it.
+        """
+        task = self.service.tasks().get(
+            tasklist=tasklist_id,
+            task=task_id
+        ).execute()
+        # Only change if it was completed to avoid unnecessary API calls
+        if task.get("status") == "completed":
+            task["status"] = "needsAction"
+            updated = self.service.tasks().update(
+                tasklist=tasklist_id,
+                task=task_id,
+                body=task
+            ).execute()
+            return updated
+        # If already pending, just return the original task dict
+        return task
+
     # 5. Modifier date d'échéance ou titre
     def update_task(
         self,

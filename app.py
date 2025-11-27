@@ -172,6 +172,62 @@ def get_notes():
     """Récupère les notes"""
     return load_notes()
 
+# -------------------------------------------------------
+# DOWNLOAD TASKS TO LOCAL STORAGE
+# -------------------------------------------------------
+def download_tasks_to_local() -> int:
+    """Fetch tasks from Google Tasks and merge them into ``extracted_items.json``.
+
+    The function retrieves tasks from the first task list, converts each task to the
+    internal ``extracted_items`` schema (category ``to_do``) and appends them to the
+    existing ``extracted_items.json`` file. It returns the number of tasks added.
+    """
+    try:
+        agent = EaseTasksAgent()
+        tasklists = agent.list_tasklists()
+        if not tasklists:
+            st.warning("Aucune liste de tâches trouvée dans Google Tasks.")
+            return 0
+        # Use the first task list by default
+        default_tasklist = tasklists[0]["id"]
+        # Retrieve tasks without completed ones (show_completed=False) and filter just in case
+        tasks = agent.get_tasks(default_tasklist, show_completed=False)
+        # Ensure we only keep tasks that are not completed
+        tasks = [t for t in tasks if t.get("status") != "completed"]
+        if not tasks:
+            st.info("Aucune tâche à télécharger.")
+            return 0
+
+        # Load existing extracted items (or start with an empty list)
+        extracted_path = "./json_files/extracted_items.json"
+        if os.path.exists(extracted_path):
+            with open(extracted_path, "r", encoding="utf-8") as f:
+                extracted_items = json.load(f)
+        else:
+            extracted_items = []
+
+        # Transform Google Tasks entries into the expected schema
+        new_items = []
+        for task in tasks:
+            # Basic mapping – title becomes the text, status is kept for reference
+            new_items.append({
+                "category": "to_do",
+                "text": task.get("title", "Sans titre"),
+                "status": task.get("status", "needsAction"),
+                # Optional fields that downstream code may use
+                "datetime_iso": None,
+                "datetime_raw": None,
+            })
+
+        # Append and write back
+        extracted_items.extend(new_items)
+        with open(extracted_path, "w", encoding="utf-8") as f:
+            json.dump(extracted_items, f, ensure_ascii=False, indent=2)
+        return len(new_items)
+    except Exception as e:
+        st.error(f"Erreur lors du téléchargement des tâches : {e}")
+        return 0
+
 
 
 
@@ -224,6 +280,14 @@ with st.sidebar:
     
     if st.button("🔄 Actualiser les tâches", key="refresh_tasks"):
         st.rerun()
+
+    # New button: download tasks from Google Tasks to local storage
+    if st.button("📥 Télécharger les tâches locales", key="download_tasks"):
+        count = download_tasks_to_local()
+        if count:
+            st.success(f"✅ {count} tâche(s) téléchargée(s) dans ./json_files/tasks.json.")
+        else:
+            st.info("Aucune tâche téléchargée.")
     
     try:
         tasks = get_google_tasks()
@@ -235,16 +299,39 @@ with st.sidebar:
             
             st.markdown(f"**Tâches en attente:** {len(pending_tasks)}")
             for task in pending_tasks[:10]:  # Afficher max 10
-                st.checkbox(
+                # Use a unique key based on task ID; Streamlit automatically manages its state
+                checkbox_key = f"task_{task['task_id']}"
+                checked = st.checkbox(
                     f"{task['title']} ({task['list']})",
-                    value=False,
-                    key=f"task_{task['title']}"
+                    key=checkbox_key
                 )
+                # When the user checks the box, mark the task as completed in Google Tasks
+                if checked and not st.session_state.get(f"completed_{task['task_id']}", False):
+                    try:
+                        agent = EaseTasksAgent()
+                        agent.complete_task(task['list_id'], task['task_id'])
+                        st.success(f"✅ Tâche '{task['title']}' marquée comme terminée.")
+                        st.session_state[f"completed_{task['task_id']}"] = True
+                    except Exception as e:
+                        st.error(f"❌ Erreur lors du marquage de la tâche comme terminée : {e}")
             
             if completed_tasks:
                 with st.expander(f"✅ Tâches complétées ({len(completed_tasks)})"):
                     for task in completed_tasks[:10]:
-                        st.markdown(f"~~{task['title']}~~ ({task['list']})")
+                        col_task, col_btn = st.columns([4, 1])
+                        with col_task:
+                            st.markdown(f"~~{task['title']}~~ ({task['list']})")
+                        with col_btn:
+                            undo_key = f"undo_{task['task_id']}"
+                            if st.button("↩️", key=undo_key):
+                                try:
+                                    agent = EaseTasksAgent()
+                                    agent.reopen_task(task['list_id'], task['task_id'])
+                                    st.success(f"✅ Tâche '{task['title']}' réactivée.")
+                                    # Refresh the sidebar to reflect the change
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Erreur lors de la réactivation : {e}")
         else:
             st.info("Aucune tâche trouvée")
     except Exception as e:
