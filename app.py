@@ -18,6 +18,8 @@ from agent_extract import (
     ajouter_items_si_user_accepte
 )
 from agent_write_agenda import create_events_from_json
+# Import the agenda synchronization function
+from agenda_agent import google_agenda_agent
 from agent_task import EaseTasksAgent
 from get_tasks_service import get_tasks_service
 # Import the smart suggestion function
@@ -279,6 +281,14 @@ col_chat, col_calendar = st.columns([2, 1], gap="large")
 # GOOGLE CALENDAR
 # -------------------------------------------------------
 with col_calendar:
+    # Button to transfer Google Agenda data to local storage
+    if st.button("📥 Transférer les données de l'agenda en local"):
+        try:
+            google_agenda_agent()
+            st.success("✅ Les événements de l'agenda ont été synchronisés localement.")
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la synchronisation de l'agenda : {e}")
+
     st.subheader(" Mon Google Agenda")
     
     # Refresh button
