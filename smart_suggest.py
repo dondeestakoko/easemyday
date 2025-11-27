@@ -22,11 +22,56 @@ USER_PROMPT_FILE = "./prompt/smart_suggest_user.txt"
 SYSTEM_PROMPT = load_prompt(SYSTEM_PROMPT_FILE)
 USER_PROMPT_TEMPLATE = load_prompt(USER_PROMPT_FILE)
 
+# -------------------------------------------------
+# Helper: summarize extracted items for smarter suggestions
+# -------------------------------------------------
+def _summarize_extracted(data):
+        """Create a concise summary of extracted items.
+
+        The function groups items by their ``category`` and performs a few
+        lightweight transformations:
+
+        * **Tasks (to_do)** – sorted by a ``priority`` field if present (higher
+            numbers first). If no priority is provided, the original order is kept.
+        * **Notes** – reduced to title and a truncated preview of the text (first
+            100 characters).
+        * **Agenda** – turned into short human‑readable comments containing the
+            title and datetime.
+
+        The returned dictionary is JSON‑serialisable and can be injected into the
+        user prompt for the LLM.
+        """
+        tasks = [item for item in data if item.get("category") == "to_do"]
+        # Sort by priority if available; default to 0
+        tasks.sort(key=lambda x: x.get("priority", 0), reverse=True)
+
+        notes = [item for item in data if item.get("category") == "note"]
+        simple_notes = [
+                {
+                        "title": note.get("title", "Sans titre"),
+                        "preview": (note.get("text", "")[:100] + "...")
+                        if len(note.get("text", "")) > 100
+                        else note.get("text", ""),
+                }
+                for note in notes
+        ]
+
+        agenda = [item for item in data if item.get("category") == "agenda"]
+        agenda_comments = [
+                f"{item.get('title', 'Sans titre')} à {item.get('datetime_iso', '')}" for item in agenda
+        ]
+
+        return {
+                "tasks": tasks,
+                "notes": simple_notes,
+                "agenda_comments": agenda_comments,
+        }
+
 
 # -------------------------------------------------
 # Generic Smart Suggest Agent
 # -------------------------------------------------
-def smart_suggest(json_path: str):
+def smart_suggest(json_path: str = "./json_files/extracted_items.json"):
     """
     General-purpose LLM agent that:
       - Reads ANY JSON file
@@ -34,6 +79,9 @@ def smart_suggest(json_path: str):
       - Asks the LLM for improved structure / organization
       - The behavior is fully controlled by the prompt files
     """
+    # If the caller does not provide a path, we default to the extracted items
+    # file used throughout the application. This ensures the agent always works
+    # with the latest extracted data.
     if not os.path.exists(json_path):
         raise FileNotFoundError(f"JSON file not found: {json_path}")
 
@@ -41,8 +89,14 @@ def smart_suggest(json_path: str):
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    # Inject JSON into user prompt
+    # Build a concise summary that the LLM can use to reason about tasks,
+    # notes and agenda items.
+    summary = _summarize_extracted(data)
+
+    # Inject both the raw data and the summary into the user prompt. The prompt
+    # files can reference ``{{JSON_DATA}}`` and ``{{SUMMARY}}`` placeholders.
     user_prompt = USER_PROMPT_TEMPLATE.replace("{{JSON_DATA}}", json.dumps(data, indent=2))
+    user_prompt = user_prompt.replace("{{SUMMARY}}", json.dumps(summary, indent=2))
 
     payload = {
         "model": MODEL_NAME,
@@ -67,7 +121,15 @@ def smart_suggest(json_path: str):
 
 
 if __name__ == "__main__":
-    # Example usage (you can edit or remove this)
-    output = smart_suggest("./json_files/sample.json")
+    """Run a quick demonstration of the smart suggest agent.
+
+    The original example attempted to load a non‑existent ``sample.json`` file,
+    which caused a ``FileNotFoundError``. We now simply call ``smart_suggest``
+    without arguments so it defaults to the ``extracted_items.json`` file used
+    throughout the application. If that file is also missing, a clear error is
+    raised.
+    """
+    # Use the default path (extracted_items.json) for the demo.
+    output = smart_suggest()
     print("\n=== SMART SUGGEST OUTPUT ===\n")
     print(output)
