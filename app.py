@@ -519,11 +519,68 @@ with col_chat:
     if st.session_state.suggest_clicks < 5:
         if st.button("💡 Afficher des suggestions"):
             st.session_state.suggest_clicks += 1
-            # Run the smart suggestion agent; it will read the latest extracted items
-            result = smart_suggest()
-            # Display the JSON output directly
+            # Prepare data for smart suggestions: combine extracted items with agenda items
+            extracted_path = "./json_files/extracted_items.json"
+            agenda_path = "./json_files/google_agenda_structured.json"
+            combined_path = "./json_files/_suggest_input.json"
+            try:
+                with open(extracted_path, "r", encoding="utf-8") as f:
+                    extracted_data = json.load(f)
+            except Exception:
+                extracted_data = []
+            try:
+                with open(agenda_path, "r", encoding="utf-8") as f:
+                    agenda_data = json.load(f)
+            except Exception:
+                agenda_data = []
+            # Merge both lists (agenda items may have a different schema; we keep them as‑is)
+            combined_data = extracted_data + agenda_data
+            # Write temporary combined file for the suggestion agent
+            try:
+                with open(combined_path, "w", encoding="utf-8") as f:
+                    json.dump(combined_data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                st.error(f"Erreur lors de la création du fichier de suggestions : {e}")
+                combined_path = extracted_path  # fallback to extracted only
+            # Run the smart suggestion agent on the combined data
+            result = smart_suggest(json_path=combined_path)
+            suggestions = result.get("output", {})
             st.subheader("Suggestions générées")
-            st.json(result.get("output", {}))
+
+            # Helper to turn the JSON output into a readable markdown hierarchy
+            def _render_hierarchy(data, level=0):
+                """Recursively convert dict/list structures into markdown.
+
+                * Dictionaries become headings (###, ####, … based on depth).
+                * Lists become bullet points.
+                * Primitive values are rendered as plain text.
+                """
+                lines = []
+                if isinstance(data, dict):
+                    for k, v in data.items():
+                        lines.append(f"{'#' * (level + 3)} {k.capitalize()}")
+                        lines.extend(_render_hierarchy(v, level + 1))
+                elif isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict):
+                            # Use a representative field as the bullet title
+                            title = item.get('title') or item.get('text') or next(iter(item.values()))
+                            lines.append(f"- {title}")
+                            for sub_k, sub_v in item.items():
+                                if sub_k in ('title', 'text'):
+                                    continue
+                                lines.append(f"  - **{sub_k}**: {sub_v}")
+                        else:
+                            lines.append(f"- {item}")
+                else:
+                    lines.append(f"- {data}")
+                return lines
+
+            if isinstance(suggestions, dict) and suggestions:
+                markdown_text = "\n".join(_render_hierarchy(suggestions))
+                st.markdown(markdown_text)
+            else:
+                st.write(suggestions)
     else:
         st.info("Vous avez atteint le nombre maximal de 5 suggestions pour cette session.")
 
