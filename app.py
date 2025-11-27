@@ -20,6 +20,8 @@ from agent_extract import (
 from agent_write_agenda import create_events_from_json
 from agent_task import EaseTasksAgent
 from get_tasks_service import get_tasks_service
+# Import the smart suggestion function
+from smart_suggest import smart_suggest
 
 # -------------------------------------------------
 # NOTE HELPERS (local JSON storage in ./json_files)
@@ -410,57 +412,74 @@ with col_chat:
                 st.session_state.last_message_id = None
 
     # -------------------------------------------------------
+    # SUGGESTIONS SECTION
+    # -------------------------------------------------------
+    # Initialise click counter if not present
+    if "suggest_clicks" not in st.session_state:
+        st.session_state.suggest_clicks = 0
+
+    # Provide a button to generate suggestions (max 5 times per session)
+    if st.session_state.suggest_clicks < 5:
+        if st.button("💡 Afficher des suggestions"):
+            st.session_state.suggest_clicks += 1
+            # Run the smart suggestion agent; it will read the latest extracted items
+            result = smart_suggest()
+            # Display the JSON output directly
+            st.subheader("Suggestions générées")
+            st.json(result.get("output", {}))
+    else:
+        st.info("Vous avez atteint le nombre maximal de 5 suggestions pour cette session.")
+
+    # -------------------------------------------------------
     # OPTIONS DE SAUVEGARDE (avant le traitement des messages)
     # -------------------------------------------------------
-        if st.session_state.pending_save and st.session_state.last_extracted:
-            st.write("---")
-            st.write("Souhaites-tu enregistrer ces informations ?")
+    if st.session_state.pending_save and st.session_state.last_extracted:
+        st.write("---")
+        st.write("Souhaites-tu enregistrer ces informations ?")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Oui, ajouter"):
-                    # Work on a copy to avoid accidental reuse of stale data
-                    current_items = st.session_state.last_extracted or []
-                    ajouter_items_si_user_accepte(current_items, True)
-                    st.success("Les éléments ont été ajoutés.")
-                
-                    # Si des éléments "agenda" existent, créer les événements Google Calendar
-                    agenda_items = [item for item in current_items 
-                                if item.get("category") == "agenda"]
-                    if agenda_items:
-                        with st.spinner(" Ajout des événements au calendrier..."):
-                            result = create_events_from_json()
-                            st.success(f" {result['created']} événement(s) ajouté(s) au calendrier!")
-                            if result['skipped'] > 0:
-                                st.warning(f" {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
-                
-                    # Si des éléments "to_do" existent, créer les tâches Google Tasks
-                    todo_items = [item for item in current_items 
-                                if item.get("category") == "to_do"]
-                    if todo_items:
-                        with st.spinner(" Ajout des tâches..."):
-                            result = add_tasks_to_google(current_items)
-                            st.success(f" {result['created']} tâche(s) ajoutée(s) à Google Tasks!")
-                            if result['skipped'] > 0:
-                                st.warning(f" {result['skipped']} tâche(s) ignorée(s)")
-                
-                    # Si des éléments "note" existent, créer les notes locales
-                    note_items = [item for item in current_items 
-                                if item.get("category") == "note"]
-                    if note_items:
-                        with st.spinner(" Ajout des notes..."):
-                            result = add_notes_to_local(current_items)
-                            st.success(f" {result['created']} note(s) ajoutée(s)!")
-                            if result['skipped'] > 0:
-                                st.warning(f" {result['skipped']} note(s) ignorée(s)")
-                    current_items = []
-                    st.session_state.pending_save = False
-                    st.session_state.last_extracted = []
-                    st.session_state.last_message_id = None  # Clear to prevent re-processing
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Oui, ajouter"):
+                # Work on a copy to avoid accidental reuse of stale data
+                current_items = st.session_state.last_extracted or []
+                ajouter_items_si_user_accepte(current_items, True)
+                st.success("Les éléments ont été ajoutés.")
 
-            with col2:
-                if st.button("Non, annuler"):
-                    st.info("Aucun élément n'a été ajouté.")
-                    st.session_state.pending_save = False
-                    st.session_state.last_extracted = None
-                    st.session_state.last_message_id = None  # Clear to prevent re-processing
+                # Si des éléments "agenda" existent, créer les événements Google Calendar
+                agenda_items = [item for item in current_items if item.get("category") == "agenda"]
+                if agenda_items:
+                    with st.spinner(" Ajout des événements au calendrier..."):
+                        result = create_events_from_json()
+                        st.success(f" {result['created']} événement(s) ajouté(s) au calendrier!")
+                        if result['skipped'] > 0:
+                            st.warning(f" {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
+
+                # Si des éléments "to_do" existent, créer les tâches Google Tasks
+                todo_items = [item for item in current_items if item.get("category") == "to_do"]
+                if todo_items:
+                    with st.spinner(" Ajout des tâches..."):
+                        result = add_tasks_to_google(current_items)
+                        st.success(f" {result['created']} tâche(s) ajoutée(s) à Google Tasks!")
+                        if result['skipped'] > 0:
+                            st.warning(f" {result['skipped']} tâche(s) ignorée(s)")
+
+                # Si des éléments "note" existent, créer les notes locales
+                note_items = [item for item in current_items if item.get("category") == "note"]
+                if note_items:
+                    with st.spinner(" Ajout des notes..."):
+                        result = add_notes_to_local(current_items)
+                        st.success(f" {result['created']} note(s) ajoutée(s)!")
+                        if result['skipped'] > 0:
+                            st.warning(f" {result['skipped']} note(s) ignorée(s)")
+                # Reset temporary variables
+                current_items = []
+                st.session_state.pending_save = False
+                st.session_state.last_extracted = []
+                st.session_state.last_message_id = None  # Clear to prevent re-processing
+
+        with col2:
+            if st.button("Non, annuler"):
+                st.info("Aucun élément n'a été ajouté.")
+                st.session_state.pending_save = False
+                st.session_state.last_extracted = None
+                st.session_state.last_message_id = None  # Clear to prevent re-processing
