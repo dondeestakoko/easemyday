@@ -1,5 +1,6 @@
 import json
 import datetime
+from datetime import timezone
 import os.path
 import sys
 import re
@@ -56,7 +57,8 @@ def extract_end_time_from_text(text: str, start_time: datetime.datetime) -> date
             
             # Si l'heure de fin est avant l'heure de début, c'est le jour suivant
             if dt_end <= start_time:
-                dt_end += datetime.timedelta(days=1)
+                # If end time is same or earlier, assume 1 hour duration
+                dt_end = start_time + datetime.timedelta(hours=1)
             
             return dt_end
     
@@ -171,7 +173,8 @@ def create_events_from_json() -> Dict[str, int]:
 
         # Correction pour les dates "naïves" : ajouter le fuseau horaire local
         if dt_start.tzinfo is None:
-            dt_start = dt_start.astimezone()
+            # Attach local timezone (Europe/Paris) explicitly
+            dt_start = dt_start.replace(tzinfo=timezone.utc).astimezone()
 
         # Extraire l'heure de fin depuis le texte
         dt_end = extract_end_time_from_text(text, dt_start)
@@ -189,7 +192,8 @@ def create_events_from_json() -> Dict[str, int]:
                 timeMin=start_str,
                 timeMax=end_str,
                 singleEvents=True,
-                orderBy='startTime'
+                orderBy='startTime',
+                timeZone=TIMEZONE
             ).execute()
 
             existing_events = events_result.get('items', [])
@@ -197,8 +201,18 @@ def create_events_from_json() -> Dict[str, int]:
             if existing_events:
                 # CONFLIT TROUVÉ
                 collision_summary = existing_events[0].get('summary', 'Événement inconnu')
-                print(f"X Créneau pris: '{text}' à {start_str}")
-                print(f"    -> Conflit avec : '{collision_summary}'")
+                # Vérifier que l'événement en conflit commence exactement à la même heure
+                ev_start = existing_events[0].get('start', {}).get('dateTime')
+                try:
+                    ev_dt = datetime.datetime.fromisoformat(ev_start)
+                except Exception:
+                    ev_dt = None
+                if ev_dt and ev_dt.date() == dt_start.date() and ev_dt.time() == dt_start.time():
+                    print(f"X Créneau pris: '{text}' à {start_str}")
+                    print(f"    -> Conflit avec : '{collision_summary}'")
+                else:
+                    # Ignorer les conflits provenant d'un jour différent
+                    print(f"Ignorer conflit potentiel avec '{collision_summary}' (différent jour)")
                 skipped_count += 1
                 continue
         

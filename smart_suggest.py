@@ -68,6 +68,6 @@ def smart_suggest(json_path: str):
 
 if __name__ == "__main__":
     # Example usage (you can edit or remove this)
-    output = smart_suggest("./data/sample.json")
+    output = smart_suggest("./json_files/sample.json")
     print("\n=== SMART SUGGEST OUTPUT ===\n")
     print(output)

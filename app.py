@@ -6,7 +6,9 @@ import io
 import requests
 from dotenv import load_dotenv
 from audio_recorder_streamlit import audio_recorder
-from datetime import datetime
+from datetime import datetime, timezone
+import uuid
+import json
 
 # Fonctions de ton agent
 from agent_extract import (
@@ -19,11 +21,56 @@ from agent_write_agenda import create_events_from_json
 from agent_task import EaseTasksAgent
 from get_tasks_service import get_tasks_service
 
-# Notes management
-import uuid
+# -------------------------------------------------
+# NOTE HELPERS (local JSON storage in ./json_files)
+# -------------------------------------------------
+NOTES_JSON = "./json_files/notes.json"
 
-NOTES_JSON_FILE = "./json_files/notes.json"
+def load_notes():
+    """Load notes from the JSON file (creates it if missing)."""
+    if not os.path.exists(NOTES_JSON):
+        with open(NOTES_JSON, "w", encoding="utf-8") as f:
+            json.dump([], f)
+        return []
+    with open(NOTES_JSON, "r", encoding="utf-8") as f:
+        return json.load(f)
 
+def save_notes(notes):
+    """Write the notes list back to the JSON file."""
+    with open(NOTES_JSON, "w", encoding="utf-8") as f:
+        json.dump(notes, f, ensure_ascii=False, indent=2)
+
+def add_notes_to_local(json_data):
+    """Create local notes from extracted items (category == 'note')."""
+    notes = load_notes()
+    created_count = 0
+    for item in json_data:
+        if item.get("category") == "note":
+            note = {
+                "id": str(uuid.uuid4()),
+                "title": item.get("title", "Sans titre"),
+                "text": item.get("text", ""),
+                "datetime": item.get("datetime_iso", ""),
+                "created_at": datetime.now().isoformat(),
+                "archived": False,
+            }
+            notes.append(note)
+            created_count += 1
+    save_notes(notes)
+    # Return a summary similar to other add_* functions
+    return {"created": created_count, "skipped": 0}
+    # Also clear the extracted items file to avoid re‑processing stale data
+    try:
+        with open("./json_files/extracted_items.json", "w", encoding="utf-8") as f:
+            json.dump([], f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def delete_note(note_id):
+    """Remove a note by its UUID."""
+    notes = load_notes()
+    notes = [n for n in notes if n["id"] != note_id]
+    save_notes(notes)
 
 # Chargement .env
 load_dotenv()
@@ -83,9 +130,14 @@ def add_tasks_to_google(json_data):
                     due_datetime = None
                     if due_date:
                         try:
+                            due_datetime = datetime.fromisoformat(due_date)
+                        except Exception:
+                            # Fallback: try adding UTC offset
                             due_datetime = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
-                        except:
-                            pass
+                    
+                    # Ensure timezone awareness
+                    if due_datetime and due_datetime.tzinfo is None:
+                        due_datetime = due_datetime.replace(tzinfo=timezone.utc)
                     
                     agent.create_task(
                         tasklist_id=default_tasklist,
@@ -99,69 +151,22 @@ def add_tasks_to_google(json_data):
                     skipped_count += 1
                     print(f"✗ Erreur lors de la création de {title}: {e}")
         
+        # After processing, clear the extracted items file to avoid re‑processing
+        try:
+            with open("./json_files/extracted_items.json", "w", encoding="utf-8") as f:
+                json.dump([], f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            st.warning(f"Impossible de vider extracted_items.json: {e}")
+
         return {"created": created_count, "skipped": skipped_count}
     except Exception as e:
         st.error(f"Erreur lors de l'ajout des tâches: {e}")
         return {"created": 0, "skipped": 0}
 
 
-def load_notes():
-    """Charge les notes du fichier JSON"""
-    if not os.path.exists(NOTES_JSON_FILE):
-        return []
-    try:
-        with open(NOTES_JSON_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return []
-
-
-def save_notes(notes):
-    """Sauvegarde les notes dans le fichier JSON"""
-    os.makedirs("./json_files", exist_ok=True)
-    try:
-        with open(NOTES_JSON_FILE, "w", encoding="utf-8") as f:
-            json.dump(notes, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Erreur lors de la sauvegarde des notes: {e}")
-
-
 def get_notes():
     """Récupère les notes"""
     return load_notes()
-
-
-def add_notes_to_local(json_data):
-    """Ajoute les notes de catégorie 'note' au fichier JSON local"""
-    notes = load_notes()
-    created_count = 0
-    skipped_count = 0
-    
-    for item in json_data:
-        if item.get("category") == "note":
-            title = item.get("text", "Note sans titre")[:50]
-            text = item.get("text", "")
-            datetime_raw = item.get("datetime_raw")
-            
-            try:
-                note = {
-                    "id": str(uuid.uuid4()),
-                    "title": title,
-                    "text": text,
-                    "datetime": datetime_raw,
-                    "created_at": datetime.now().isoformat(),
-                    "archived": False
-                }
-                
-                notes.append(note)
-                created_count += 1
-                print(f"✓ Note créée: {title}")
-            except Exception as e:
-                skipped_count += 1
-                print(f"✗ Erreur lors de la création de {title}: {e}")
-    
-    save_notes(notes)
-    return {"created": created_count, "skipped": skipped_count}
 
 
 
@@ -226,19 +231,11 @@ with st.sidebar:
             
             st.markdown(f"**Tâches en attente:** {len(pending_tasks)}")
             for task in pending_tasks[:10]:  # Afficher max 10
-                col_check, col_title = st.columns([0.15, 0.85])
-                with col_check:
-                    if st.checkbox("✓", label_visibility="collapsed", key=f"task_{task['task_id']}_checkbox"):
-                        # Mark as completed
-                        try:
-                            agent = EaseTasksAgent()
-                            agent.complete_task(task['list_id'], task['task_id'])
-                            st.success(f"✅ '{task['title']}' marquée comme complétée!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erreur: {e}")
-                with col_title:
-                    st.text(f"{task['title']} ({task['list']})")
+                st.checkbox(
+                    f"{task['title']} ({task['list']})",
+                    value=False,
+                    key=f"task_{task['title']}"
+                )
             
             if completed_tasks:
                 with st.expander(f"✅ Tâches complétées ({len(completed_tasks)})"):
@@ -363,7 +360,8 @@ with col_chat:
     # -------------------------------------------------------
     if final_input:
         # Create unique message ID to prevent duplicate processing
-        message_id = hash(final_input + str(len(st.session_state.messages)))
+        # Use a stable hash based only on the content to avoid duplicate processing
+        message_id = hash(final_input)
         
         if st.session_state.last_message_id != message_id:
             st.session_state.last_message_id = message_id
@@ -398,7 +396,9 @@ with col_chat:
             st.session_state.messages.append({"role": "assistant", "content": response_text})
             
             # Reset audio flag to prevent duplicate processing
+
             st.session_state.audio_processed = False
+            
     
     # Display all messages in the container (after processing)
     with chat_container:
@@ -412,53 +412,55 @@ with col_chat:
     # -------------------------------------------------------
     # OPTIONS DE SAUVEGARDE (avant le traitement des messages)
     # -------------------------------------------------------
-    if st.session_state.pending_save and st.session_state.last_extracted:
-        st.write("---")
-        st.write("Souhaites-tu enregistrer ces informations ?")
+        if st.session_state.pending_save and st.session_state.last_extracted:
+            st.write("---")
+            st.write("Souhaites-tu enregistrer ces informations ?")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Oui, ajouter"):
-                ajouter_items_si_user_accepte(st.session_state.last_extracted, True)
-                st.success("Les éléments ont été ajoutés.")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Oui, ajouter"):
+                    # Work on a copy to avoid accidental reuse of stale data
+                    current_items = st.session_state.last_extracted or []
+                    ajouter_items_si_user_accepte(current_items, True)
+                    st.success("Les éléments ont été ajoutés.")
                 
-                # Si des éléments "agenda" existent, créer les événements Google Calendar
-                agenda_items = [item for item in st.session_state.last_extracted 
-                               if item.get("category") == "agenda"]
-                if agenda_items:
-                    with st.spinner("📅 Ajout des événements au calendrier..."):
-                        result = create_events_from_json()
-                        st.success(f"📅 {result['created']} événement(s) ajouté(s) au calendrier!")
-                        if result['skipped'] > 0:
-                            st.warning(f"⚠️ {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
+                    # Si des éléments "agenda" existent, créer les événements Google Calendar
+                    agenda_items = [item for item in current_items 
+                                if item.get("category") == "agenda"]
+                    if agenda_items:
+                        with st.spinner(" Ajout des événements au calendrier..."):
+                            result = create_events_from_json()
+                            st.success(f" {result['created']} événement(s) ajouté(s) au calendrier!")
+                            if result['skipped'] > 0:
+                                st.warning(f" {result['skipped']} événement(s) ignoré(s) (créneau pris ou erreur)")
                 
-                # Si des éléments "to_do" existent, créer les tâches Google Tasks
-                todo_items = [item for item in st.session_state.last_extracted 
-                             if item.get("category") == "to_do"]
-                if todo_items:
-                    with st.spinner("📝 Ajout des tâches..."):
-                        result = add_tasks_to_google(st.session_state.last_extracted)
-                        st.success(f"✅ {result['created']} tâche(s) ajoutée(s) à Google Tasks!")
-                        if result['skipped'] > 0:
-                            st.warning(f"⚠️ {result['skipped']} tâche(s) ignorée(s)")
+                    # Si des éléments "to_do" existent, créer les tâches Google Tasks
+                    todo_items = [item for item in current_items 
+                                if item.get("category") == "to_do"]
+                    if todo_items:
+                        with st.spinner(" Ajout des tâches..."):
+                            result = add_tasks_to_google(current_items)
+                            st.success(f" {result['created']} tâche(s) ajoutée(s) à Google Tasks!")
+                            if result['skipped'] > 0:
+                                st.warning(f" {result['skipped']} tâche(s) ignorée(s)")
                 
-                # Si des éléments "note" existent, créer les notes locales
-                note_items = [item for item in st.session_state.last_extracted 
-                             if item.get("category") == "note"]
-                if note_items:
-                    with st.spinner("📌 Ajout des notes..."):
-                        result = add_notes_to_local(st.session_state.last_extracted)
-                        st.success(f"📌 {result['created']} note(s) ajoutée(s)!")
-                        if result['skipped'] > 0:
-                            st.warning(f"⚠️ {result['skipped']} note(s) ignorée(s)")
-                
-                st.session_state.pending_save = False
-                st.session_state.last_extracted = None
-                st.session_state.last_message_id = None  # Clear to prevent re-processing
+                    # Si des éléments "note" existent, créer les notes locales
+                    note_items = [item for item in current_items 
+                                if item.get("category") == "note"]
+                    if note_items:
+                        with st.spinner(" Ajout des notes..."):
+                            result = add_notes_to_local(current_items)
+                            st.success(f" {result['created']} note(s) ajoutée(s)!")
+                            if result['skipped'] > 0:
+                                st.warning(f" {result['skipped']} note(s) ignorée(s)")
+                    current_items = []
+                    st.session_state.pending_save = False
+                    st.session_state.last_extracted = []
+                    st.session_state.last_message_id = None  # Clear to prevent re-processing
 
-        with col2:
-            if st.button("Non, annuler"):
-                st.info("Aucun élément n'a été ajouté.")
-                st.session_state.pending_save = False
-                st.session_state.last_extracted = None
-                st.session_state.last_message_id = None  # Clear to prevent re-processing
+            with col2:
+                if st.button("Non, annuler"):
+                    st.info("Aucun élément n'a été ajouté.")
+                    st.session_state.pending_save = False
+                    st.session_state.last_extracted = None
+                    st.session_state.last_message_id = None  # Clear to prevent re-processing
