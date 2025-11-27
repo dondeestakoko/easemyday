@@ -226,11 +226,19 @@ with st.sidebar:
             
             st.markdown(f"**Tâches en attente:** {len(pending_tasks)}")
             for task in pending_tasks[:10]:  # Afficher max 10
-                st.checkbox(
-                    f"{task['title']} ({task['list']})",
-                    value=False,
-                    key=f"task_{task['title']}"
-                )
+                col_check, col_title = st.columns([0.15, 0.85])
+                with col_check:
+                    if st.checkbox("✓", label_visibility="collapsed", key=f"task_{task['task_id']}_checkbox"):
+                        # Mark as completed
+                        try:
+                            agent = EaseTasksAgent()
+                            agent.complete_task(task['list_id'], task['task_id'])
+                            st.success(f"✅ '{task['title']}' marquée comme complétée!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erreur: {e}")
+                with col_title:
+                    st.text(f"{task['title']} ({task['list']})")
             
             if completed_tasks:
                 with st.expander(f"✅ Tâches complétées ({len(completed_tasks)})"):
