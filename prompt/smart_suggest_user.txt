@@ -14,6 +14,39 @@ Veuillez :
 3. Identifier les informations manquantes ou ambiguës.
 4. Formuler 2 à 3 questions de clarification pour l'utilisateur.
 5. Fournir un **résumé des suggestions prêtes à être implémentées** sous forme d’étapes concrètes.
-6. Garder les suggestions générales (non spécifiques à un domaine) sauf si le JSON indique clairement un domaine.
+6. **Définir explicitement les suggestions pour chaque catégorie** :
+      - **Notes** : comment les structurer, les classer ou les enrichir.
+      - **Agenda** : comment formuler les événements, gérer les conflits ou ajouter des rappels.
+      - **Tâches** : pour chaque tâche présente dans les éléments extraits, fournir un objet JSON détaillé contenant :
+            - `tache` : description courte de la tâche.
+            - `categorie` : l’une des valeurs : `étude`, `santé`, `administratif`, `tâches quotidiennes`, `loisir`, `autre`.
+            - `priorite` : `haute`, `moyenne` ou `faible`.
+            - `etapes` : tableau de chaînes décrivant les étapes concrètes pour réaliser la tâche.
+            - `suggestion_commencer` : action concrète à faire immédiatement.
+         Les objets doivent être regroupés dans un tableau sous la clé `tasks`.
+7. **Retourner les suggestions sous forme de JSON** où chaque clé correspond à une catégorie et la valeur est le texte de la suggestion ou le tableau d’objets, par exemple :
+    ```json
+    {
+       "notes": "...suggestion...",
+       "agenda": "...suggestion...",
+       "tasks": [
+          {
+             "tache": "Préparer le rapport mensuel",
+             "categorie": "administratif",
+             "priorite": "haute",
+             "etapes": ["Collecter les données", "Rédiger le brouillon", "Faire relire", "Finaliser le PDF"],
+             "suggestion_commencer": "Ouvrir le fichier de collecte des données"
+          },
+          {
+             "tache": "Faire du sport",
+             "categorie": "santé",
+             "priorite": "moyenne",
+             "etapes": ["Choisir une activité", "Planifier 30 minutes", "S'étirer"],
+             "suggestion_commencer": "Mettre des vêtements de sport"
+          }
+       ]
+    }
+    ```
+8. Garder les suggestions générales (non spécifiques à un domaine) sauf si le JSON indique clairement un domaine.
 
-Présentez la réponse de façon claire et structurée.
+Présentez la réponse uniquement sous ce format JSON, sans texte supplémentaire.

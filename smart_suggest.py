@@ -4,7 +4,7 @@ import requests
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL_NAME = "qwen/qwen3-32b"
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 # -------------------------------------------------
 # Load text prompts from files
@@ -71,7 +71,10 @@ def _summarize_extracted(data):
 # -------------------------------------------------
 # Generic Smart Suggest Agent
 # -------------------------------------------------
-def smart_suggest(json_path: str = "./json_files/extracted_items.json"):
+def smart_suggest(
+    json_path: str = "./json_files/extracted_items.json",
+    output_path: str = "./json_files/smart_suggest_output.json",
+):
     """
     General-purpose LLM agent that:
       - Reads ANY JSON file
@@ -117,7 +120,32 @@ def smart_suggest(json_path: str = "./json_files/extracted_items.json"):
         raise Exception(f"Groq API Error: {response.text}")
 
     result = response.json()
-    return result["choices"][0]["message"]["content"]
+    # Extract the suggestion text from the LLM response
+    suggestion_text = result["choices"][0]["message"]["content"]
+
+    # The LLM may wrap the JSON in markdown fences (```json ... ```). Clean it.
+    cleaned = suggestion_text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[len("```json"):]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+
+    # Try to parse the cleaned string as JSON. If parsing fails, fall back to
+    # storing the raw string under the key "suggestions".
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        parsed = {"suggestions": cleaned}
+
+    # Write the parsed JSON to the output file.
+    try:
+        with open(output_path, "w", encoding="utf-8") as out_f:
+            json.dump(parsed, out_f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        raise IOError(f"Failed to write smart suggest output to {output_path}: {e}")
+
+    return {"output": parsed, "output_file": output_path}
 
 
 if __name__ == "__main__":
