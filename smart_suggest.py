@@ -74,6 +74,7 @@ def _summarize_extracted(data):
 def smart_suggest(
     json_path: str = "./json_files/extracted_items.json",
     output_path: str = "./json_files/smart_suggest_output.json",
+    temperature: float = 0.7,
 ):
     """
     General-purpose LLM agent that:
@@ -101,11 +102,18 @@ def smart_suggest(
     user_prompt = USER_PROMPT_TEMPLATE.replace("{{JSON_DATA}}", json.dumps(data, indent=2))
     user_prompt = user_prompt.replace("{{SUMMARY}}", json.dumps(summary, indent=2))
 
+    # Adding a random UUID to the user prompt helps the model treat each request
+    # as a distinct conversation, reducing the chance of identical completions.
+    import uuid
+    unique_id = str(uuid.uuid4())
+    user_prompt_with_id = f"<!-- request_id: {unique_id} -->\n" + user_prompt
+
     payload = {
         "model": MODEL_NAME,
+        "temperature": temperature,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt_with_id}
         ],
     }
 
